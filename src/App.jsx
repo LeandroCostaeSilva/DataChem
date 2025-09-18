@@ -229,7 +229,7 @@ function App() {
     <AppContainer>
       <Header>
         <HeaderContent>
-          <Logo src="/DataChem/logo.svg" alt="DataChem Logo" />
+          <Logo src="/logo.svg" alt="DataChem Logo" />
           <Title>DataChem</Title>
         </HeaderContent>
         <Subtitle>

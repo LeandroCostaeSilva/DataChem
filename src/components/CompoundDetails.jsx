@@ -437,8 +437,7 @@ const CompoundDetails = ({ compoundData, isLoading, error }) => {
     smiles,
     imageURL,
     cid,
-    drugInteractions,
-    literature
+    drugInteractions
   } = compoundData;
 
   const displayedSynonyms = showAllSynonyms ? synonyms : synonyms.slice(0, 10);
@@ -531,7 +530,6 @@ const CompoundDetails = ({ compoundData, isLoading, error }) => {
 
       <DrugInteractionsTable 
         drugInteractions={drugInteractions}
-        literature={literature}
         isLoading={isLoading}
       />
     </DetailsContainer>

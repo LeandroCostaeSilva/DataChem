@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import styled from 'styled-components';
 
 const TableContainer = styled.div`
@@ -42,46 +42,7 @@ const SectionTitle = styled.h3`
   }
 `;
 
-const TabContainer = styled.div`
-  display: flex;
-  border-bottom: 2px solid #f8f9fa;
-  margin-bottom: 20px;
-  
-  @media (max-width: 768px) {
-    margin-bottom: 16px;
-  }
-  
-  @media (max-width: 480px) {
-    margin-bottom: 12px;
-  }
-`;
 
-const Tab = styled.button`
-  background: none;
-  border: none;
-  padding: 12px 20px;
-  font-size: 14px;
-  font-weight: 500;
-  color: ${props => props.active ? '#007bff' : '#6c757d'};
-  border-bottom: 2px solid ${props => props.active ? '#007bff' : 'transparent'};
-  cursor: pointer;
-  transition: all 0.3s ease;
-  
-  &:hover {
-    color: #007bff;
-    background: #f8f9fa;
-  }
-  
-  @media (max-width: 768px) {
-    padding: 10px 16px;
-    font-size: 13px;
-  }
-  
-  @media (max-width: 480px) {
-    padding: 8px 12px;
-    font-size: 12px;
-  }
-`;
 
 const TableWrapper = styled.div`
   overflow-x: auto;
@@ -220,144 +181,78 @@ const LoadingState = styled.div`
   }
 `;
 
-const DrugInteractionsTable = ({ drugInteractions = [], literature = [], isLoading = false }) => {
-  const [activeTab, setActiveTab] = useState('interactions');
-
-  const getBadgeType = (outcome) => {
-    if (!outcome || outcome === 'N/A') return 'default';
-    const lowerOutcome = outcome.toLowerCase();
-    if (lowerOutcome.includes('active') || lowerOutcome.includes('positive')) return 'active';
-    if (lowerOutcome.includes('inactive') || lowerOutcome.includes('negative')) return 'inactive';
-    if (lowerOutcome.includes('inconclusive') || lowerOutcome.includes('unclear')) return 'inconclusive';
-    return 'default';
-  };
-
-  const renderInteractionsTable = () => {
+const DrugInteractionsTable = ({ drugInteractions = 0, isLoading = false }) => {
+  const renderContent = () => {
     if (isLoading) {
       return <LoadingState>🔍 Carregando interações medicamentosas...</LoadingState>;
     }
 
-    if (!drugInteractions || drugInteractions.length === 0) {
+    // Se drugInteractions é 0 (conforme retornado pelo serviço), exibir (0)
+    if (drugInteractions === 0) {
       return (
         <EmptyState>
-          Nenhuma interação medicamentosa encontrada nos bioassays disponíveis.
+          Drug-Drug Interactions: (0)
         </EmptyState>
       );
     }
 
-    return (
-      <TableWrapper>
-        <Table>
-          <TableHeader>
-            <tr>
-              <TableHeaderCell>AID</TableHeaderCell>
-              <TableHeaderCell>Descrição</TableHeaderCell>
-              <TableHeaderCell>Atividade</TableHeaderCell>
-              <TableHeaderCell>Resultado</TableHeaderCell>
-              <TableHeaderCell>Alvo</TableHeaderCell>
-            </tr>
-          </TableHeader>
-          <TableBody>
-            {drugInteractions.map((interaction, index) => (
-              <TableRow key={index}>
-                <TableCell>
-                  <a 
-                    href={`https://pubchem.ncbi.nlm.nih.gov/bioassay/${interaction.aid}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{ color: '#007bff', textDecoration: 'none' }}
-                  >
-                    {interaction.aid}
-                  </a>
-                </TableCell>
-                <TableCell>{interaction.description}</TableCell>
-                <TableCell>{interaction.activity}</TableCell>
-                <TableCell>
-                  <Badge type={getBadgeType(interaction.outcome)}>
-                    {interaction.outcome}
-                  </Badge>
-                </TableCell>
-                <TableCell>{interaction.target}</TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </TableWrapper>
-    );
-  };
-
-  const renderLiteratureTable = () => {
-    if (isLoading) {
-      return <LoadingState>🔍 Carregando literatura científica...</LoadingState>;
-    }
-
-    if (!literature || literature.length === 0) {
+    // Se drugInteractions é um array vazio ou não tem dados específicos de DDI
+    if (!drugInteractions || (Array.isArray(drugInteractions) && drugInteractions.length === 0)) {
       return (
         <EmptyState>
-          Nenhuma referência de literatura encontrada.
+          Drug-Drug Interactions: (0)
         </EmptyState>
       );
     }
 
+    // Se houver dados específicos de DDI (caso futuro com API especializada)
+    if (Array.isArray(drugInteractions) && drugInteractions.length > 0) {
+      return (
+        <TableWrapper>
+          <Table>
+            <TableHeader>
+              <tr>
+                <TableHeaderCell>Substância Interagente</TableHeaderCell>
+                <TableHeaderCell>Tipo de Interação</TableHeaderCell>
+                <TableHeaderCell>Severidade</TableHeaderCell>
+                <TableHeaderCell>Descrição</TableHeaderCell>
+                <TableHeaderCell>Evidência</TableHeaderCell>
+              </tr>
+            </TableHeader>
+            <TableBody>
+              {drugInteractions.map((interaction, index) => (
+                <TableRow key={index}>
+                  <TableCell>{interaction.interactingSubstance}</TableCell>
+                  <TableCell>{interaction.interactionType}</TableCell>
+                  <TableCell>
+                    <Badge type={interaction.severity?.toLowerCase()}>
+                      {interaction.severity}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>{interaction.description}</TableCell>
+                  <TableCell>{interaction.evidence}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableWrapper>
+      );
+    }
+
     return (
-      <TableWrapper>
-        <Table>
-          <TableHeader>
-            <tr>
-              <TableHeaderCell>Título</TableHeaderCell>
-              <TableHeaderCell>Autores</TableHeaderCell>
-              <TableHeaderCell>Revista</TableHeaderCell>
-              <TableHeaderCell>Ano</TableHeaderCell>
-              <TableHeaderCell>PMID/AID</TableHeaderCell>
-            </tr>
-          </TableHeader>
-          <TableBody>
-            {literature.map((paper, index) => (
-              <TableRow key={index}>
-                <TableCell>{paper.title}</TableCell>
-                <TableCell>{paper.authors}</TableCell>
-                <TableCell>{paper.journal}</TableCell>
-                <TableCell>{paper.year}</TableCell>
-                <TableCell>
-                  <a 
-                    href={`https://pubchem.ncbi.nlm.nih.gov/bioassay/${paper.pmid.replace('AID_', '')}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{ color: '#007bff', textDecoration: 'none' }}
-                  >
-                    {paper.pmid}
-                  </a>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </TableWrapper>
+      <EmptyState>
+        Drug-Drug Interactions: (0)
+      </EmptyState>
     );
   };
 
   return (
     <TableContainer>
       <SectionTitle>
-        📊 Contents - Literature & Drug Interactions
+        🧬 Drug-Drug Interactions
       </SectionTitle>
       
-      <TabContainer>
-        <Tab 
-          active={activeTab === 'interactions'} 
-          onClick={() => setActiveTab('interactions')}
-        >
-          Drug-Drug Interactions ({drugInteractions?.length || 0})
-        </Tab>
-        <Tab 
-          active={activeTab === 'literature'} 
-          onClick={() => setActiveTab('literature')}
-        >
-          Literatura ({literature?.length || 0})
-        </Tab>
-      </TabContainer>
-
-      {activeTab === 'interactions' ? renderInteractionsTable() : renderLiteratureTable()}
+      {renderContent()}
     </TableContainer>
   );
 };

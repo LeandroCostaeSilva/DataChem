@@ -203,36 +203,24 @@ export const getCompoundBioassays = async (cid) => {
 /**
  * Função para buscar interações medicamentosas específicas
  * @param {number} cid - CID do composto
- * @returns {Promise<Array>} - Lista de interações medicamentosas
+ * @returns {Promise<Array|number>} - Lista de interações medicamentosas ou (0) se não houver dados específicos
  */
 export const getDrugInteractions = async (cid) => {
   try {
-    // Buscar bioassays que podem conter informações sobre interações
-    const bioassays = await getCompoundBioassays(cid);
+    // Nota: PubChem não possui endpoint específico para Drug-Drug Interactions
+    // Esta implementação retorna (0) conforme solicitado quando não há dados específicos de DDI
     
-    // Filtrar bioassays relacionados a interações medicamentosas
-    const drugInteractions = bioassays.filter(assay => {
-      const description = assay.Cell?.[1]?.toLowerCase() || '';
-      return description.includes('drug') || 
-             description.includes('interaction') || 
-             description.includes('inhibition') ||
-             description.includes('binding') ||
-             description.includes('cytotoxicity') ||
-             description.includes('pharmacology');
-    });
-
-    // Formatar os dados para exibição
-    return drugInteractions.map(assay => ({
-      aid: assay.Cell?.[0] || 'N/A',
-      description: assay.Cell?.[1] || 'Descrição não disponível',
-      activity: assay.Cell?.[2] || 'N/A',
-      outcome: assay.Cell?.[3] || 'N/A',
-      target: assay.Cell?.[4] || 'Alvo não especificado',
-      type: 'Bioassay'
-    }));
+    // O PubChem não fornece dados específicos de Drug-Drug Interactions
+    // através de sua API PUG-REST. Para obter dados reais de DDI, seria necessário
+    // usar APIs especializadas como DrugBank (que requer chave de API paga)
+    
+    console.log(`Buscando Drug-Drug Interactions para CID ${cid}: Dados específicos de DDI não disponíveis no PubChem`);
+    
+    // Retornar (0) conforme solicitado quando não há dados específicos de Drug-Drug Interactions
+    return 0;
   } catch (error) {
     console.error('Erro ao buscar interações medicamentosas:', error);
-    return [];
+    return 0;
   }
 };
 
@@ -296,9 +284,6 @@ export const getCompoundData = async (compoundName) => {
     // 6. Buscar interações medicamentosas
     const drugInteractions = await getDrugInteractions(cid);
 
-    // 7. Buscar literatura relacionada
-    const literature = await getCompoundLiterature(cid);
-
     return {
       cid,
       name: compoundName,
@@ -310,7 +295,6 @@ export const getCompoundData = async (compoundName) => {
       smiles: properties.SMILES || 'Não disponível',
       imageURL,
       drugInteractions,
-      literature,
       searchTerm: compoundName
     };
   } catch (error) {

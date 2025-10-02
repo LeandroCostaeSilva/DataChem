@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import styled from 'styled-components';
 import DrugInteractionsTable from './DrugInteractionsTable';
+import AdverseReactionsTable from './AdverseReactionsTable';
 
 const DetailsContainer = styled.div`
   background: white;
@@ -437,7 +438,8 @@ const CompoundDetails = ({ compoundData, isLoading, error }) => {
     smiles,
     imageURL,
     cid,
-    drugInteractions
+    drugInteractions,
+    adverseReactions
   } = compoundData;
 
   const displayedSynonyms = showAllSynonyms ? synonyms : synonyms.slice(0, 10);
@@ -531,6 +533,13 @@ const CompoundDetails = ({ compoundData, isLoading, error }) => {
       <DrugInteractionsTable 
         drugInteractions={drugInteractions}
         isLoading={isLoading}
+        compoundName={name}
+      />
+
+      <AdverseReactionsTable 
+        adverseReactions={adverseReactions}
+        isLoading={isLoading}
+        compoundName={name}
       />
     </DetailsContainer>
   );

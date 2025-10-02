@@ -1,4 +1,6 @@
 import axios from 'axios';
+import { getAdverseReactions } from './fdaService.js';
+import { getDrugInteractions as getDrugBankInteractions } from './drugbankService.js';
 
 // Base URLs para as APIs do PubChem
 const PUBCHEM_BASE_URL = 'https://pubchem.ncbi.nlm.nih.gov/rest/pug';
@@ -201,23 +203,47 @@ export const getCompoundBioassays = async (cid) => {
 };
 
 /**
- * Função para buscar interações medicamentosas específicas
+ * Função para buscar interações medicamentosas específicas usando DrugBank API
  * @param {number} cid - CID do composto
- * @returns {Promise<Array|number>} - Lista de interações medicamentosas ou (0) se não houver dados específicos
+ * @param {string} compoundName - Nome do composto (usado como fallback)
+ * @returns {Promise<Array|number>} - Lista de interações medicamentosas ou (0) se não houver dados
  */
-export const getDrugInteractions = async (cid) => {
+export const getDrugInteractions = async (cid, compoundName = null) => {
   try {
-    // Nota: PubChem não possui endpoint específico para Drug-Drug Interactions
-    // Esta implementação retorna (0) conforme solicitado quando não há dados específicos de DDI
+    console.log(`🔍 Buscando Drug-Drug Interactions para CID ${cid}${compoundName ? ` (${compoundName})` : ''}`);
     
-    // O PubChem não fornece dados específicos de Drug-Drug Interactions
-    // através de sua API PUG-REST. Para obter dados reais de DDI, seria necessário
-    // usar APIs especializadas como DrugBank (que requer chave de API paga)
-    
-    console.log(`Buscando Drug-Drug Interactions para CID ${cid}: Dados específicos de DDI não disponíveis no PubChem`);
-    
-    // Retornar (0) conforme solicitado quando não há dados específicos de Drug-Drug Interactions
+    // Se temos o nome do composto, usar diretamente o DrugBank
+    if (compoundName) {
+      const interactions = await getDrugBankInteractions(compoundName);
+      
+      if (interactions && interactions.length > 0) {
+        console.log(`✅ Encontradas ${interactions.length} interações via DrugBank para "${compoundName}"`);
+        return interactions;
+      }
+    }
+
+    // Fallback: tentar obter sinônimos do PubChem para buscar no DrugBank
+    try {
+      const synonyms = await getCompoundSynonyms(cid);
+      
+      if (synonyms && synonyms.length > 0) {
+        // Tentar com os primeiros sinônimos (mais prováveis de serem nomes comerciais)
+        for (const synonym of synonyms.slice(0, 3)) {
+          const interactions = await getDrugBankInteractions(synonym);
+          
+          if (interactions && interactions.length > 0) {
+            console.log(`✅ Encontradas ${interactions.length} interações via DrugBank para sinônimo "${synonym}"`);
+            return interactions;
+          }
+        }
+      }
+    } catch (synonymError) {
+      console.warn('Erro ao buscar sinônimos para DDI:', synonymError);
+    }
+
+    console.log(`ℹ️ Nenhuma interação encontrada para CID ${cid}`);
     return 0;
+    
   } catch (error) {
     console.error('Erro ao buscar interações medicamentosas:', error);
     return 0;
@@ -281,8 +307,13 @@ export const getCompoundData = async (compoundName) => {
     // 5. Obter URL da imagem
     const imageURL = getCompoundImageURL(cid);
 
-    // 6. Buscar interações medicamentosas
-    const drugInteractions = await getDrugInteractions(cid);
+    // 6. Buscar interações medicamentosas via DrugBank
+    const drugInteractions = await getDrugInteractions(cid, compoundName);
+
+    // 7. Buscar reações adversas no FDA
+    console.log('🔍 PubChem Service - Buscando reações adversas para:', compoundName);
+    const adverseReactions = await getAdverseReactions(compoundName);
+    console.log('📊 PubChem Service - Reações adversas recebidas:', adverseReactions);
 
     return {
       cid,
@@ -295,6 +326,7 @@ export const getCompoundData = async (compoundName) => {
       smiles: properties.SMILES || 'Não disponível',
       imageURL,
       drugInteractions,
+      adverseReactions,
       searchTerm: compoundName
     };
   } catch (error) {

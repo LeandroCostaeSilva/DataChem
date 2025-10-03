@@ -292,6 +292,12 @@ const AdverseReactionsTable = ({ adverseReactions, isLoading, compoundName }) =>
               : `Não foram encontradas reações adversas notificadas no FDA para "${compoundName || 'este composto'}".`
             }
             <br />
+            <br />
+            <strong style={{ color: '#007bff' }}>
+              💡 Dica: Refaça a busca com a sinonímia mais conhecida em idioma inglês
+            </strong>
+            <br />
+            <br />
             Isso pode indicar que o composto não possui relatos de eventos adversos registrados ou que não é um medicamento aprovado pelo FDA.
           </EmptyDescription>
         </EmptyState>

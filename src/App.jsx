@@ -2,13 +2,13 @@ import React, { useState } from 'react';
 import styled from 'styled-components';
 import SearchBox from './components/SearchBox';
 import CompoundDetails from './components/CompoundDetails';
-import SearchHistory from './components/SearchHistory';
+import Sidebar from './components/Sidebar';
 import { getCompoundData } from './services/pubchemService';
 import { saveSearchToHistory } from './services/firebaseService';
 
 const AppContainer = styled.div`
   min-height: 100vh;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
   padding: 20px;
   
   @media (max-width: 768px) {
@@ -233,17 +233,17 @@ function App() {
           <Title>DataChem</Title>
         </HeaderContent>
         <Subtitle>
-          A busca inteligente por compostos químicos conectada à PubChem database - Base de dados integrante dos Institutos Nacionais de Saúde do governo dos Estados Unidos (NIH).
+          Identifique o composto químico (PubChem), Eventos Adversos notificados (FDA) e busque interações (DrugBank).
         </Subtitle>
       </Header>
 
+      <Sidebar onSelectSearch={handleHistorySelect} />
+
       <MainContent>
         <SearchSection>
-          <SearchTitle>Buscar Composto Químico</SearchTitle>
+          <SearchTitle>Digite e selecione o nome químico</SearchTitle>
           <SearchBox onSearch={handleSearch} isLoading={isLoading} />
         </SearchSection>
-
-        <SearchHistory onSelectSearch={handleHistorySelect} />
 
         <CompoundDetails
           compoundData={compoundData}

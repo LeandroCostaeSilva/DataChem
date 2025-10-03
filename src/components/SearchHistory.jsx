@@ -3,30 +3,20 @@ import styled from 'styled-components';
 import { getSearchHistory, getRecentSearches } from '../services/firebaseService';
 
 const HistoryContainer = styled.div`
-  background: white;
-  border-radius: 12px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-  padding: 24px;
-  margin-bottom: 24px;
-  
-  @media (max-width: 768px) {
-    padding: 16px;
-    border-radius: 8px;
-    margin-bottom: 16px;
-  }
+  /* Container simplificado para uso dentro do Sidebar */
 `;
 
 const HistoryTitle = styled.h3`
   color: #2c3e50;
   margin: 0 0 16px 0;
-  font-size: 1.2rem;
+  font-size: 1rem;
   font-weight: 600;
   display: flex;
   align-items: center;
   gap: 8px;
   
   @media (max-width: 768px) {
-    font-size: 1.1rem;
+    font-size: 0.95rem;
   }
 `;
 
@@ -107,7 +97,7 @@ const EmptyMessage = styled.div`
 `;
 
 const ToggleButton = styled.button`
-  background: #667eea;
+  background: #2c3e50;
   color: white;
   border: none;
   padding: 8px 16px;
@@ -117,7 +107,7 @@ const ToggleButton = styled.button`
   transition: background 0.2s ease;
   
   &:hover {
-    background: #5a6fd8;
+    background: #34495e;
   }
 `;
 
@@ -190,23 +180,11 @@ const SearchHistory = ({ onSelectSearch }) => {
 
   return (
     <HistoryContainer>
-      <HistoryTitle>
-        📚 {showRecent ? 'Pesquisas Recentes' : 'Histórico de Pesquisas'}
-        <ToggleButton 
-          onClick={() => {
-            setIsExpanded(!isExpanded);
-            setShowRecent(!showRecent);
-          }}
-        >
-          {isExpanded ? 'Ver Recentes' : 'Ver Histórico'}
-        </ToggleButton>
-      </HistoryTitle>
-      
       {isLoading ? (
         <LoadingMessage>Carregando histórico...</LoadingMessage>
       ) : history.length === 0 ? (
         <EmptyMessage>
-          {showRecent ? 'Nenhuma pesquisa recente encontrada.' : 'Histórico vazio. Faça algumas pesquisas!'}
+          Nenhuma pesquisa realizada ainda. Faça sua primeira busca!
         </EmptyMessage>
       ) : (
         <HistoryList>

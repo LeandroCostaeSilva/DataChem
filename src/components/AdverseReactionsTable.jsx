@@ -266,11 +266,11 @@ const AdverseReactionsTable = ({ adverseReactions, isLoading, compoundName }) =>
     return (
       <Container>
         <Header>
-          Reações Adversas notificadas no FDA
+          Eventos Adversos notificados no FDA
           <Badge>Carregando...</Badge>
         </Header>
         <LoadingState>
-          🔄 Buscando reações adversas no banco de dados do FDA...
+          🔄 Buscando eventos adversos no banco de dados do FDA...
         </LoadingState>
       </Container>
     );
@@ -280,16 +280,16 @@ const AdverseReactionsTable = ({ adverseReactions, isLoading, compoundName }) =>
     return (
       <Container>
         <Header>
-          Reações Adversas notificadas no FDA
+          Eventos Adversos notificados no FDA
           <Badge>(0)</Badge>
         </Header>
         <EmptyState>
           <EmptyIcon>⚕️</EmptyIcon>
-          <EmptyTitle>Nenhuma reação adversa encontrada</EmptyTitle>
+          <EmptyTitle>Nenhum evento adverso encontrado</EmptyTitle>
           <EmptyDescription>
             {adverseReactions?.meta?.error 
               ? adverseReactions.meta.disclaimer
-              : `Não foram encontradas reações adversas notificadas no FDA para "${compoundName || 'este composto'}".`
+              : `Não foram encontrados eventos adversos notificados no FDA para "${compoundName || 'este composto'}".`
             }
             <br />
             <br />
@@ -312,7 +312,7 @@ const AdverseReactionsTable = ({ adverseReactions, isLoading, compoundName }) =>
   return (
     <Container>
       <Header>
-        Reações Adversas notificadas no FDA
+        Eventos Adversos notificados no FDA
         <Badge>({results.length})</Badge>
       </Header>
       <Content>
@@ -321,7 +321,7 @@ const AdverseReactionsTable = ({ adverseReactions, isLoading, compoundName }) =>
             <TableHeader>
               <tr>
                 <TableHeaderCell>Medicamento Comercial</TableHeaderCell>
-                <TableHeaderCell>Reações Adversas</TableHeaderCell>
+                <TableHeaderCell>Eventos Adversos</TableHeaderCell>
                 <TableHeaderCell>Paciente</TableHeaderCell>
                 <TableHeaderCell>ID do Relatório</TableHeaderCell>
                 <TableHeaderCell>Fabricante</TableHeaderCell>
@@ -397,7 +397,7 @@ const AdverseReactionsTable = ({ adverseReactions, isLoading, compoundName }) =>
           <strong>Aviso Importante:</strong> {adverseReactions.meta?.disclaimer || 'Dados fornecidos pela API openFDA'}
           <br />
           <br />
-          Os dados de reações adversas são baseados em relatos voluntários ao FDA e não estabelecem uma relação causal entre o medicamento e o evento adverso. 
+          Os dados de eventos adversos são baseados em relatos voluntários ao FDA e não estabelecem uma relação causal entre o medicamento e o evento adverso. 
           Estes dados devem ser interpretados por profissionais de saúde qualificados e não substituem orientação médica profissional.
         </Disclaimer>
       </Content>

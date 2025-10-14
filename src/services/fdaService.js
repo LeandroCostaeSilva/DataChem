@@ -186,7 +186,7 @@ const generateNameVariations = (drugName) => {
 };
 
 /**
- * Cria uma query de busca expandida incluindo sinônimos
+ * Cria uma query de busca expandida incluindo sinônimos e múltiplos campos
  * @param {string} drugName - Nome do medicamento original
  * @returns {string} - Query expandida para a API FDA
  */
@@ -195,72 +195,94 @@ const createExpandedSearchQuery = (drugName) => {
   
   console.log(`🔍 Expandindo busca para "${drugName}":`, synonyms);
   
-  // Cria queries para diferentes campos da API FDA
-  // Campos openFDA harmonizados (mais confiáveis)
-  const genericQueries = synonyms.map(synonym => 
-    `patient.drug.openfda.generic_name:"${synonym}"`
-  );
+  // Criar queries para diferentes campos da API FDA com priorização
+  const allQueries = [];
   
-  const brandQueries = synonyms.map(synonym => 
-    `patient.drug.openfda.brand_name:"${synonym}"`
-  );
+  // PRIORIDADE ALTA: Campos openFDA harmonizados (mais confiáveis)
+  synonyms.forEach(synonym => {
+    // Nome genérico (campo mais importante)
+    allQueries.push(`patient.drug.openfda.generic_name:"${synonym}"`);
+    
+    // Nome comercial/marca
+    allQueries.push(`patient.drug.openfda.brand_name:"${synonym}"`);
+    
+    // Substância ativa
+    allQueries.push(`patient.drug.openfda.substance_name:"${synonym}"`);
+    
+    // Ingrediente ativo
+    if (synonym.length > 3) { // Evitar termos muito curtos
+      allQueries.push(`patient.drug.openfda.active_ingredient:"${synonym}"`);
+    }
+  });
   
-  const substanceQueries = synonyms.map(synonym => 
-    `patient.drug.openfda.substance_name:"${synonym}"`
-  );
+  // PRIORIDADE MÉDIA: Campos originais do FAERS (maior cobertura)
+  synonyms.forEach(synonym => {
+    // Produto medicinal (campo principal do FAERS)
+    allQueries.push(`patient.drug.medicinalproduct:"${synonym}"`);
+    
+    // Nome da substância ativa
+    allQueries.push(`patient.drug.activesubstancename:"${synonym}"`);
+    
+    // Nome do medicamento
+    allQueries.push(`patient.drug.drugname:"${synonym}"`);
+  });
   
-  // Campos originais do FAERS (maior cobertura)
-  const medicinalQueries = synonyms.map(synonym => 
-    `patient.drug.medicinalproduct:"${synonym}"`
-  );
+  // PRIORIDADE BAIXA: Campos adicionais para cobertura máxima
+  synonyms.forEach(synonym => {
+    if (synonym.length > 4) { // Apenas para termos mais específicos
+      // Indicação terapêutica
+      allQueries.push(`patient.drug.drugindication:"${synonym}"`);
+      
+      // Fabricante
+      allQueries.push(`patient.drug.openfda.manufacturer_name:"${synonym}"`);
+      
+      // Código de produto
+      allQueries.push(`patient.drug.openfda.product_ndc:"${synonym}"`);
+      
+      // Número de aplicação
+      allQueries.push(`patient.drug.openfda.application_number:"${synonym}"`);
+      
+      // Rota de administração
+      allQueries.push(`patient.drug.openfda.route:"${synonym}"`);
+      
+      // Forma farmacêutica
+      allQueries.push(`patient.drug.openfda.dosage_form:"${synonym}"`);
+    }
+  });
   
-  const activeSubstanceQueries = synonyms.map(synonym => 
-    `patient.drug.activesubstancename:"${synonym}"`
-  );
+  // Adicionar buscas parciais para termos compostos
+  synonyms.forEach(synonym => {
+    if (synonym.includes(' ') || synonym.includes('-')) {
+      const parts = synonym.split(/[\s-]+/);
+      parts.forEach(part => {
+        if (part.length > 3) {
+          allQueries.push(`patient.drug.openfda.generic_name:*${part}*`);
+          allQueries.push(`patient.drug.medicinalproduct:*${part}*`);
+        }
+      });
+    }
+  });
   
-  // Campos adicionais para maior cobertura
-  const drugNameQueries = synonyms.map(synonym => 
-    `patient.drug.drugname:"${synonym}"`
-  );
+  // Remover duplicatas e limitar o número de queries para evitar URLs muito longas
+  const uniqueQueries = [...new Set(allQueries)];
+  const limitedQueries = uniqueQueries.slice(0, 100); // Limitar para evitar URLs muito longas
   
-  // Busca por indicações (pode capturar medicamentos por uso terapêutico)
-  const indicationQueries = synonyms.map(synonym => 
-    `patient.drug.drugindication:"${synonym}"`
-  );
+  const expandedQuery = `(${limitedQueries.join(' OR ')})`;
   
-  // Busca por fabricante (útil para nomes comerciais específicos)
-  const manufacturerQueries = synonyms.map(synonym => 
-    `patient.drug.openfda.manufacturer_name:"${synonym}"`
-  );
-  
-  // Combina todas as queries com OR
-  const allQueries = [
-    ...genericQueries,
-    ...brandQueries,
-    ...substanceQueries,
-    ...medicinalQueries,
-    ...activeSubstanceQueries,
-    ...drugNameQueries,
-    ...indicationQueries,
-    ...manufacturerQueries
-  ];
-  
-  const expandedQuery = `(${allQueries.join(' OR ')})`;
-  
-  console.log(`📊 Query expandida gerada com ${allQueries.length} termos de busca`);
+  console.log(`📊 Query expandida gerada com ${limitedQueries.length} termos únicos de busca`);
   
   return expandedQuery;
 };
 
 /**
- * Função para buscar reações adversas de um medicamento/composto no FDA
+ * Função para buscar reações adversas de um medicamento/composto no FDA com cobertura ampliada
  * @param {string} drugName - Nome do medicamento/composto (nome genérico/químico)
- * @param {number} limit - Número máximo de resultados (padrão: 10, máximo: 100)
- * @returns {Promise<Object>} - Dados das reações adversas filtradas por nome genérico
+ * @param {number} maxResults - Número máximo de resultados desejados (padrão: 500)
+ * @returns {Promise<Object>} - Dados das reações adversas com cobertura ampliada
  */
-export const getAdverseReactions = async (drugName, limit = 10) => {
+export const getAdverseReactions = async (drugName, maxResults = 500) => {
   try {
-    console.log('🔍 FDA Service - Busca com sinônimos iniciada para:', drugName, 'timestamp:', new Date().toISOString());
+    console.log('🔍 FDA Service - Busca ampliada iniciada para:', drugName, 'timestamp:', new Date().toISOString());
     
     if (!isValidDrugName(drugName)) {
       return {
@@ -274,56 +296,25 @@ export const getAdverseReactions = async (drugName, limit = 10) => {
       };
     }
 
-    // Cria busca expandida incluindo sinônimos
-    const expandedQuery = createExpandedSearchQuery(drugName);
-    const url = `${FDA_BASE_URL}/drug/event.json?search=${encodeURIComponent(expandedQuery)}&limit=${Math.min(limit, 100)}`;
+    // Executar múltiplas estratégias de busca para ampliar cobertura
+    const allResults = await executeMultipleSearchStrategies(drugName, maxResults);
     
-    console.log('🌐 Buscando eventos adversos com sinônimos para:', drugName);
-    console.log('🌐 Query expandida:', expandedQuery);
-    console.log('🌐 URL da busca:', url);
-    
-    const response = await fetch(url);
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('❌ Busca por nome genérico falhou. Status:', response.status, 'Erro:', errorText);
-      console.error('❌ URL da busca:', url);
-      
-      if (response.status === 404) {
-        return {
-          success: true,
-          results: [],
-          meta: {
-            total: 0,
-            disclaimer: `Nenhum evento adverso encontrado para a substância genérica "${drugName}"`
-          },
-          stats: getAdverseReactionsStats([]),
-          message: `Nenhum evento adverso encontrado para a substância genérica "${drugName}"`
-        };
-      }
-      
-      throw new Error(`Erro na API do FDA: ${response.status} - ${errorText}`);
-    }
-
-    const data = await response.json();
-    console.log('✅ Resposta da FDA API para', drugName, ':', data);
-    
-    if (!data.results || data.results.length === 0) {
+    if (allResults.length === 0) {
       return {
         success: true,
         results: [],
         meta: {
           total: 0,
-          disclaimer: `Nenhum evento adverso encontrado para a substância genérica "${drugName}"`
+          disclaimer: `Nenhum evento adverso encontrado para "${drugName}" usando múltiplas estratégias de busca`
         },
         stats: getAdverseReactionsStats([]),
-        message: `Nenhum evento adverso encontrado para a substância genérica "${drugName}"`
+        message: `Nenhum evento adverso encontrado para "${drugName}"`
       };
     }
     
-    // Filtrar eventos que realmente contêm a substância genérica pesquisada
-    const filteredResults = filterEventsByGenericName(data.results, drugName);
-    console.log(`✅ Filtrados ${filteredResults.length} de ${data.results.length} eventos que contêm a substância "${drugName}"`);
+    // Filtrar eventos que realmente contêm a substância pesquisada
+    const filteredResults = filterEventsByGenericName(allResults, drugName);
+    console.log(`✅ Filtrados ${filteredResults.length} de ${allResults.length} eventos que contêm "${drugName}"`);
     
     if (filteredResults.length === 0) {
       return {
@@ -331,14 +322,14 @@ export const getAdverseReactions = async (drugName, limit = 10) => {
         results: [],
         meta: {
           total: 0,
-          disclaimer: `Nenhum medicamento encontrado contendo a substância genérica "${drugName}"`
+          disclaimer: `Nenhum medicamento encontrado contendo a substância "${drugName}"`
         },
         stats: getAdverseReactionsStats([]),
-        message: `Nenhum medicamento encontrado contendo a substância genérica "${drugName}"`
+        message: `Nenhum medicamento encontrado contendo a substância "${drugName}"`
       };
     }
     
-    // Usar processamento individual para mostrar cada evento separadamente
+    // Processar eventos individuais para máxima cobertura
     const processedData = processIndividualAdverseReactions(filteredResults, drugName);
     
     return {
@@ -346,10 +337,11 @@ export const getAdverseReactions = async (drugName, limit = 10) => {
       results: processedData.reactions,
       meta: {
         total: filteredResults.length,
-        disclaimer: 'Dados fornecidos pela API openFDA - Filtrados por substância genérica'
+        disclaimer: 'Dados fornecidos pela API openFDA - Busca ampliada com múltiplas estratégias',
+        searchStrategies: 'Busca expandida com sinônimos, paginação e múltiplos campos'
       },
       stats: processedData.stats,
-      message: `Encontrados ${filteredResults.length} eventos adversos para medicamentos contendo "${drugName}"`
+      message: `Encontrados ${filteredResults.length} eventos adversos para medicamentos contendo "${drugName}" (busca ampliada)`
     };
     
   } catch (error) {
@@ -365,6 +357,165 @@ export const getAdverseReactions = async (drugName, limit = 10) => {
       error: error.message
     };
   }
+};
+
+/**
+ * Executa múltiplas estratégias de busca para ampliar a cobertura de eventos adversos
+ * @param {string} drugName - Nome do medicamento
+ * @param {number} maxResults - Número máximo de resultados desejados
+ * @returns {Promise<Array>} - Array combinado de todos os eventos encontrados
+ */
+const executeMultipleSearchStrategies = async (drugName, maxResults) => {
+  const allEvents = new Map(); // Usar Map para evitar duplicatas por safetyreportid
+  const synonyms = expandDrugSynonyms(drugName);
+  
+  console.log(`🔍 Executando múltiplas estratégias de busca para "${drugName}" com ${synonyms.length} sinônimos`);
+  
+  // Estratégia 1: Busca expandida com todos os sinônimos (principal)
+  try {
+    const expandedResults = await searchWithExpandedQuery(drugName, Math.min(maxResults, 1000));
+    expandedResults.forEach(event => {
+      if (event.safetyreportid) {
+        allEvents.set(event.safetyreportid, event);
+      }
+    });
+    console.log(`✅ Estratégia 1 (expandida): ${expandedResults.length} eventos únicos`);
+  } catch (error) {
+    console.warn('⚠️ Estratégia 1 falhou:', error.message);
+  }
+  
+  // Estratégia 2: Busca individual por sinônimo (para casos específicos)
+  for (const synonym of synonyms.slice(0, 5)) { // Limitar a 5 sinônimos principais
+    try {
+      const individualResults = await searchBySingleTerm(synonym, 200);
+      individualResults.forEach(event => {
+        if (event.safetyreportid && !allEvents.has(event.safetyreportid)) {
+          allEvents.set(event.safetyreportid, event);
+        }
+      });
+      console.log(`✅ Estratégia 2 (${synonym}): ${individualResults.length} novos eventos`);
+      
+      // Parar se já temos resultados suficientes
+      if (allEvents.size >= maxResults) break;
+    } catch (error) {
+      console.warn(`⚠️ Estratégia 2 falhou para "${synonym}":`, error.message);
+    }
+  }
+  
+  // Estratégia 3: Busca por campos específicos (medicinalproduct, activesubstancename)
+  try {
+    const specificFieldResults = await searchBySpecificFields(drugName, 300);
+    specificFieldResults.forEach(event => {
+      if (event.safetyreportid && !allEvents.has(event.safetyreportid)) {
+        allEvents.set(event.safetyreportid, event);
+      }
+    });
+    console.log(`✅ Estratégia 3 (campos específicos): ${specificFieldResults.length} novos eventos`);
+  } catch (error) {
+    console.warn('⚠️ Estratégia 3 falhou:', error.message);
+  }
+  
+  const finalResults = Array.from(allEvents.values());
+  console.log(`🎯 Total de eventos únicos coletados: ${finalResults.length}`);
+  
+  return finalResults.slice(0, maxResults);
+};
+
+/**
+ * Busca com query expandida incluindo todos os sinônimos
+ */
+const searchWithExpandedQuery = async (drugName, limit) => {
+  const expandedQuery = createExpandedSearchQuery(drugName);
+  return await performPaginatedSearch(expandedQuery, limit);
+};
+
+/**
+ * Busca por um termo individual
+ */
+const searchBySingleTerm = async (term, limit) => {
+  const query = `(patient.drug.openfda.generic_name:"${term}" OR patient.drug.openfda.brand_name:"${term}" OR patient.drug.medicinalproduct:"${term}")`;
+  return await performPaginatedSearch(query, limit);
+};
+
+/**
+ * Busca por campos específicos do FAERS
+ */
+const searchBySpecificFields = async (drugName, limit) => {
+  const synonyms = expandDrugSynonyms(drugName);
+  const queries = [];
+  
+  // Busca específica por medicinalproduct
+  synonyms.forEach(synonym => {
+    queries.push(`patient.drug.medicinalproduct:"${synonym}"`);
+  });
+  
+  // Busca específica por activesubstancename
+  synonyms.forEach(synonym => {
+    queries.push(`patient.drug.activesubstancename:"${synonym}"`);
+  });
+  
+  const query = `(${queries.join(' OR ')})`;
+  return await performPaginatedSearch(query, limit);
+};
+
+/**
+ * Executa busca paginada para obter mais resultados
+ * @param {string} query - Query de busca
+ * @param {number} maxResults - Número máximo de resultados
+ * @returns {Promise<Array>} - Array de eventos
+ */
+const performPaginatedSearch = async (query, maxResults) => {
+  const allResults = [];
+  const limitPerPage = 1000; // Máximo permitido pela API FDA
+  let skip = 0;
+  let hasMoreResults = true;
+  
+  while (hasMoreResults && allResults.length < maxResults) {
+    try {
+      const remainingResults = maxResults - allResults.length;
+      const currentLimit = Math.min(limitPerPage, remainingResults);
+      
+      const url = `${FDA_BASE_URL}/drug/event.json?search=${encodeURIComponent(query)}&limit=${currentLimit}&skip=${skip}`;
+      
+      console.log(`📄 Buscando página ${Math.floor(skip / limitPerPage) + 1} (skip: ${skip}, limit: ${currentLimit})`);
+      
+      const response = await fetch(url);
+      
+      if (!response.ok) {
+        if (response.status === 404) {
+          console.log('📄 Fim dos resultados (404)');
+          break;
+        }
+        throw new Error(`Erro na API: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      if (!data.results || data.results.length === 0) {
+        console.log('📄 Fim dos resultados (sem dados)');
+        break;
+      }
+      
+      allResults.push(...data.results);
+      skip += data.results.length;
+      
+      // Se retornou menos que o limite, não há mais páginas
+      if (data.results.length < currentLimit) {
+        hasMoreResults = false;
+      }
+      
+      console.log(`📄 Coletados ${data.results.length} eventos (total: ${allResults.length})`);
+      
+      // Pequena pausa para não sobrecarregar a API
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+    } catch (error) {
+      console.warn(`⚠️ Erro na paginação (skip: ${skip}):`, error.message);
+      break;
+    }
+  }
+  
+  return allResults;
 };
 
 /**
@@ -611,72 +762,165 @@ const isRelevantResult = (result, drugName) => {
 };
 
 /**
- * Filtra eventos adversos que realmente contêm a substância genérica pesquisada
+ * Filtra eventos adversos que contêm a substância pesquisada com algoritmo otimizado
  * @param {Array} events - Lista de eventos adversos da FDA
- * @param {string} genericName - Nome genérico da substância pesquisada
- * @returns {Array} - Eventos filtrados
+ * @param {string} drugName - Nome da substância pesquisada
+ * @returns {Array} - Eventos filtrados com maior cobertura
  */
-const filterEventsByGenericName = (events, genericName) => {
-  const normalizedTarget = normalizeDrugName(genericName);
-  const synonyms = expandDrugSynonyms(genericName);
+const filterEventsByGenericName = (events, drugName) => {
+  const normalizedTarget = normalizeDrugName(drugName);
+  const synonyms = expandDrugSynonyms(drugName);
   const allVariations = synonyms.concat(synonyms.flatMap(synonym => generateNameVariations(synonym)));
   
-  console.log('🔍 Filtrando eventos com sinônimos:', allVariations);
+  console.log(`🔍 Filtrando ${events.length} eventos com ${allVariations.length} variações:`, allVariations.slice(0, 10));
   
-  return events.filter(event => {
+  const filteredEvents = events.filter(event => {
     if (!event.patient || !event.patient.drug || !Array.isArray(event.patient.drug)) {
       return false;
     }
     
-    // Verificar se algum medicamento no evento contém a substância genérica
+    // Verificar se algum medicamento no evento contém a substância
     return event.patient.drug.some(drug => {
-      // Função auxiliar para verificar correspondência
-      const checkMatch = (value) => {
-        if (!value) return false;
+      // Função auxiliar para verificar correspondência flexível
+      const checkFlexibleMatch = (value) => {
+        if (!value || typeof value !== 'string') return false;
         const normalizedValue = normalizeDrugName(value);
-        return allVariations.some(variation => 
-          normalizedValue.includes(variation) || 
-          variation.includes(normalizedValue)
-        );
+        
+        // Correspondência exata
+        if (allVariations.some(variation => normalizedValue === variation)) {
+          return true;
+        }
+        
+        // Correspondência parcial (contém)
+        if (allVariations.some(variation => 
+          normalizedValue.includes(variation) || variation.includes(normalizedValue)
+        )) {
+          return true;
+        }
+        
+        // Correspondência por palavras individuais
+        const valueWords = normalizedValue.split(/\s+/);
+        const hasWordMatch = allVariations.some(variation => {
+          const variationWords = variation.split(/\s+/);
+          return variationWords.some(varWord => 
+            valueWords.some(valWord => 
+              (varWord.length > 3 && valWord.includes(varWord)) ||
+              (valWord.length > 3 && varWord.includes(valWord))
+            )
+          );
+        });
+        
+        return hasWordMatch;
       };
       
-      // Função auxiliar para verificar arrays
+      // Função auxiliar para verificar arrays com scoring
       const checkArrayMatch = (array) => {
         if (!Array.isArray(array)) return false;
-        return array.some(item => checkMatch(item));
+        return array.some(item => checkFlexibleMatch(item));
       };
       
-      // Verificar campos openFDA harmonizados (mais confiáveis)
+      let matchScore = 0;
+      
+      // PRIORIDADE ALTA: Campos openFDA harmonizados
       if (drug.openfda) {
-        // Verificar nome genérico
-        if (checkArrayMatch(drug.openfda.generic_name)) return true;
+        // Nome genérico (peso 10)
+        if (checkArrayMatch(drug.openfda.generic_name)) {
+          matchScore += 10;
+        }
         
-        // Verificar nome comercial
-        if (checkArrayMatch(drug.openfda.brand_name)) return true;
+        // Nome comercial (peso 8)
+        if (checkArrayMatch(drug.openfda.brand_name)) {
+          matchScore += 8;
+        }
         
-        // Verificar substâncias ativas
-        if (checkArrayMatch(drug.openfda.substance_name)) return true;
+        // Substância ativa (peso 9)
+        if (checkArrayMatch(drug.openfda.substance_name)) {
+          matchScore += 9;
+        }
         
-        // Verificar fabricante (pode conter nome do medicamento)
-        if (checkArrayMatch(drug.openfda.manufacturer_name)) return true;
+        // Ingrediente ativo (peso 7)
+        if (checkArrayMatch(drug.openfda.active_ingredient)) {
+          matchScore += 7;
+        }
+        
+        // Fabricante (peso 2)
+        if (checkArrayMatch(drug.openfda.manufacturer_name)) {
+          matchScore += 2;
+        }
+        
+        // Outros campos openFDA (peso 1 cada)
+        if (checkArrayMatch(drug.openfda.product_ndc)) matchScore += 1;
+        if (checkArrayMatch(drug.openfda.route)) matchScore += 1;
+        if (checkArrayMatch(drug.openfda.dosage_form)) matchScore += 1;
       }
       
-      // Verificar campos originais do FAERS (maior cobertura)
-      // Produto medicinal
-      if (checkMatch(drug.medicinalproduct)) return true;
+      // PRIORIDADE MÉDIA: Campos originais do FAERS
+      // Produto medicinal (peso 8)
+      if (checkFlexibleMatch(drug.medicinalproduct)) {
+        matchScore += 8;
+      }
       
-      // Nome da substância ativa
-      if (checkMatch(drug.activesubstancename)) return true;
+      // Nome da substância ativa (peso 9)
+      if (checkFlexibleMatch(drug.activesubstancename)) {
+        matchScore += 9;
+      }
       
-      // Nome do medicamento
-      if (checkMatch(drug.drugname)) return true;
+      // Nome do medicamento (peso 6)
+      if (checkFlexibleMatch(drug.drugname)) {
+        matchScore += 6;
+      }
       
-      // Indicação do medicamento (pode ajudar a identificar o medicamento)
-      if (checkMatch(drug.drugindication)) return true;
+      // PRIORIDADE BAIXA: Campos contextuais
+      // Indicação terapêutica (peso 3)
+      if (checkFlexibleMatch(drug.drugindication)) {
+        matchScore += 3;
+      }
       
-      return false;
+      // Considerar relevante se score >= 3 (mais permissivo)
+      return matchScore >= 3;
     });
   });
+  
+  console.log(`✅ Filtrados ${filteredEvents.length} de ${events.length} eventos relevantes`);
+  
+  // Se muito poucos resultados, tentar filtro mais permissivo
+  if (filteredEvents.length < 5 && events.length > 10) {
+    console.log('🔄 Aplicando filtro mais permissivo...');
+    
+    const permissiveEvents = events.filter(event => {
+      if (!event.patient || !event.patient.drug || !Array.isArray(event.patient.drug)) {
+        return false;
+      }
+      
+      return event.patient.drug.some(drug => {
+        // Busca mais simples - qualquer correspondência parcial
+        const simpleMatch = (value) => {
+          if (!value || typeof value !== 'string') return false;
+          const normalizedValue = normalizeDrugName(value);
+          return allVariations.some(variation => 
+            normalizedValue.includes(variation) || variation.includes(normalizedValue)
+          );
+        };
+        
+        // Verificar campos principais apenas
+        return simpleMatch(drug.medicinalproduct) ||
+               simpleMatch(drug.activesubstancename) ||
+               simpleMatch(drug.drugname) ||
+               (drug.openfda && (
+                 (drug.openfda.generic_name && drug.openfda.generic_name.some(simpleMatch)) ||
+                 (drug.openfda.brand_name && drug.openfda.brand_name.some(simpleMatch)) ||
+                 (drug.openfda.substance_name && drug.openfda.substance_name.some(simpleMatch))
+               ));
+      });
+    });
+    
+    if (permissiveEvents.length > filteredEvents.length) {
+      console.log(`🎯 Filtro permissivo encontrou ${permissiveEvents.length} eventos adicionais`);
+      return permissiveEvents;
+    }
+  }
+  
+  return filteredEvents;
 };
 
 /**

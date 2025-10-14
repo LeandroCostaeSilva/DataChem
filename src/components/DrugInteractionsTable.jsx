@@ -1,573 +1,558 @@
 import React, { useState } from 'react';
 import styled from 'styled-components';
-import { getDrugInteractionsBetweenCompounds } from '../services/drugbankService';
-import DrugBankAutocomplete from './DrugBankAutocomplete';
+import SourcesModal from './SourcesModal';
 
 const TableContainer = styled.div`
   background: white;
-  border-radius: 12px;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-  padding: 24px;
-  margin-top: 24px;
-  overflow: hidden;
-  
-  @media (max-width: 768px) {
-    padding: 20px;
-    border-radius: 8px;
-    margin-top: 16px;
-  }
-  
-  @media (max-width: 480px) {
-    padding: 16px;
-    border-radius: 6px;
-    margin-top: 12px;
-  }
+  border-radius: 8px;
+  padding: 20px;
+  margin: 16px 0;
+  border: 1px solid #e9ecef;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  overflow-x: auto;
 `;
 
-const SectionTitle = styled.h3`
+const TableTitle = styled.h3`
   color: #2c3e50;
-  margin: 0 0 20px 0;
-  font-size: 20px;
+  margin: 0 0 16px 0;
+  font-size: 18px;
   font-weight: 600;
   display: flex;
   align-items: center;
   gap: 8px;
-  
-  @media (max-width: 768px) {
-    font-size: 18px;
-    margin: 0 0 16px 0;
-  }
-  
-  @media (max-width: 480px) {
-    font-size: 16px;
-    margin: 0 0 12px 0;
-  }
 `;
 
-
-
-const TableWrapper = styled.div`
-  overflow-x: auto;
-  border-radius: 8px;
-  border: 1px solid #e1e5e9;
-  
-  @media (max-width: 768px) {
-    border-radius: 6px;
-  }
-  
-  @media (max-width: 480px) {
-    border-radius: 4px;
-  }
-`;
-
-const Table = styled.table`
+const StyledTable = styled.table`
   width: 100%;
   border-collapse: collapse;
   font-size: 14px;
+  background: white;
   
   @media (max-width: 768px) {
-    font-size: 13px;
-  }
-  
-  @media (max-width: 480px) {
     font-size: 12px;
   }
 `;
 
 const TableHeader = styled.thead`
-  background: #f8f9fa;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
 `;
 
-const TableHeaderCell = styled.th`
-  padding: 12px 16px;
+const HeaderCell = styled.th`
+  padding: 16px 12px;
   text-align: left;
   font-weight: 600;
-  color: #495057;
-  border-bottom: 1px solid #e1e5e9;
-  white-space: nowrap;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border: none;
   
   @media (max-width: 768px) {
-    padding: 10px 12px;
+    padding: 12px 8px;
+    font-size: 11px;
   }
   
-  @media (max-width: 480px) {
-    padding: 8px 10px;
+  &:first-child {
+    border-top-left-radius: 8px;
+  }
+  
+  &:last-child {
+    border-top-right-radius: 8px;
   }
 `;
 
 const TableBody = styled.tbody``;
 
 const TableRow = styled.tr`
+  transition: background-color 0.2s ease;
+  
   &:nth-child(even) {
-    background: #f8f9fa;
+    background-color: #f8f9fa;
   }
   
   &:hover {
-    background: #e3f2fd;
+    background-color: #e3f2fd;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
   }
 `;
 
 const TableCell = styled.td`
-  padding: 12px 16px;
-  border-bottom: 1px solid #e1e5e9;
-  color: #495057;
+  padding: 14px 12px;
+  border-bottom: 1px solid #e9ecef;
   vertical-align: top;
+  line-height: 1.5;
   
   @media (max-width: 768px) {
-    padding: 10px 12px;
-  }
-  
-  @media (max-width: 480px) {
-    padding: 8px 10px;
+    padding: 10px 8px;
+    font-size: 12px;
   }
 `;
 
-const Badge = styled.span`
-  background: ${props => {
-    switch (props.type) {
-      case 'active': return '#d4edda';
-      case 'inactive': return '#f8d7da';
-      case 'inconclusive': return '#fff3cd';
-      default: return '#e2e3e5';
-    }
-  }};
-  color: ${props => {
-    switch (props.type) {
-      case 'active': return '#155724';
-      case 'inactive': return '#721c24';
-      case 'inconclusive': return '#856404';
-      default: return '#383d41';
-    }
-  }};
+const SeverityBadge = styled.span`
+  display: inline-block;
   padding: 4px 8px;
-  border-radius: 4px;
-  font-size: 12px;
-  font-weight: 500;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
   
-  @media (max-width: 480px) {
-    padding: 3px 6px;
-    font-size: 11px;
-  }
+  ${props => {
+    switch (props.severity?.toLowerCase()) {
+      case 'grave':
+      case 'severe':
+        return `
+          background: #ffebee;
+          color: #c62828;
+          border: 1px solid #ffcdd2;
+        `;
+      case 'moderada':
+      case 'moderate':
+        return `
+          background: #fff3e0;
+          color: #ef6c00;
+          border: 1px solid #ffcc02;
+        `;
+      case 'leve':
+      case 'mild':
+      case 'light':
+        return `
+          background: #e8f5e8;
+          color: #2e7d32;
+          border: 1px solid #c8e6c9;
+        `;
+      default:
+        return `
+          background: #f5f5f5;
+          color: #666;
+          border: 1px solid #ddd;
+        `;
+    }
+  }}
 `;
 
-const EmptyState = styled.div`
+const NoDataMessage = styled.div`
   text-align: center;
   padding: 40px 20px;
   color: #6c757d;
   font-style: italic;
-  
-  @media (max-width: 768px) {
-    padding: 32px 16px;
-    font-size: 15px;
-  }
-  
-  @media (max-width: 480px) {
-    padding: 24px 12px;
-    font-size: 14px;
-  }
-`;
-
-const LoadingState = styled.div`
-  text-align: center;
-  padding: 40px 20px;
-  color: #007bff;
-  
-  @media (max-width: 768px) {
-    padding: 32px 16px;
-    font-size: 15px;
-  }
-  
-  @media (max-width: 480px) {
-    padding: 24px 12px;
-    font-size: 14px;
-  }
-`;
-
-const FilterContainer = styled.div`
   background: #f8f9fa;
   border-radius: 8px;
-  padding: 16px;
-  margin-bottom: 20px;
-  border: 1px solid #e1e5e9;
-  
-  @media (max-width: 768px) {
-    padding: 12px;
-    margin-bottom: 16px;
-  }
-  
-  @media (max-width: 480px) {
-    padding: 10px;
-    margin-bottom: 12px;
-  }
+  border: 2px dashed #dee2e6;
 `;
 
-const FilterTitle = styled.h4`
-  color: #495057;
-  margin: 0 0 12px 0;
-  font-size: 14px;
-  font-weight: 600;
-  
-  @media (max-width: 480px) {
-    font-size: 13px;
-    margin: 0 0 10px 0;
-  }
+const SourceInfo = styled.div`
+  margin-top: 16px;
+  padding: 12px;
+  background: #f8f9fa;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #6c757d;
+  border-left: 4px solid #007bff;
 `;
 
-const InputGroup = styled.div`
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  flex-wrap: wrap;
-  
-  @media (max-width: 768px) {
-    gap: 10px;
-  }
-  
-  @media (max-width: 480px) {
-    gap: 8px;
-    flex-direction: column;
-    align-items: stretch;
-  }
-`;
-
-
-
-const SearchButton = styled.button`
-  background: #007bff;
-  color: white;
-  border: none;
-  padding: 8px 16px;
-  border-radius: 4px;
-  font-size: 14px;
-  font-weight: 500;
+const ClickableSourcesText = styled.span`
   cursor: pointer;
-  transition: background-color 0.2s;
-  
-  &:hover:not(:disabled) {
-    background: #0056b3;
-  }
-  
-  &:disabled {
-    background: #6c757d;
-    cursor: not-allowed;
-  }
-  
-  @media (max-width: 768px) {
-    padding: 7px 14px;
-    font-size: 13px;
-  }
-  
-  @media (max-width: 480px) {
-    padding: 6px 12px;
-    font-size: 12px;
-    width: 100%;
-  }
-`;
-
-const ClearButton = styled.button`
-  background: #6c757d;
-  color: white;
-  border: none;
-  padding: 8px 16px;
-  border-radius: 4px;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background-color 0.2s;
+  color: #007bff;
+  text-decoration: underline;
+  transition: all 0.2s ease;
   
   &:hover {
-    background: #545b62;
-  }
-  
-  @media (max-width: 768px) {
-    padding: 7px 14px;
-    font-size: 13px;
-  }
-  
-  @media (max-width: 480px) {
-    padding: 6px 12px;
-    font-size: 12px;
-    width: 100%;
+    color: #0056b3;
+    background: rgba(0, 123, 255, 0.1);
+    padding: 2px 4px;
+    border-radius: 4px;
   }
 `;
 
-const DrugInteractionsTable = ({ drugInteractions = 0, isLoading = false, compoundName = '' }) => {
-  const [secondCompound, setSecondCompound] = useState('');
-  const [crossSearchResults, setCrossSearchResults] = useState(null);
-  const [isCrossSearching, setIsCrossSearching] = useState(false);
-  const [crossSearchError, setCrossSearchError] = useState('');
+const BibliographicContainer = styled.div`
+  margin-top: 20px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #e9ecef;
+  overflow: hidden;
+`;
 
-  const handleCrossSearch = async () => {
-    console.log('🔍 Iniciando busca cruzada de interações...');
-    console.log('📋 Parâmetros:', { compoundName, secondCompound: secondCompound.trim() });
-    
-    if (!secondCompound.trim()) {
-      console.warn('⚠️ Segundo composto não informado');
-      setCrossSearchError('Por favor, digite o nome do segundo composto');
-      return;
-    }
+const BibliographicHeader = styled.div`
+  background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+  color: white;
+  padding: 12px 16px;
+  font-weight: 600;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+`;
 
-    if (!compoundName.trim()) {
-      console.warn('⚠️ Composto principal não encontrado');
-      setCrossSearchError('Composto principal não encontrado');
-      return;
-    }
+const BibliographicContent = styled.div`
+  padding: 16px;
+`;
 
-    setIsCrossSearching(true);
-    setCrossSearchError('');
+const SourcesList = styled.div`
+  display: grid;
+  gap: 12px;
+`;
 
-    try {
-      console.log(`🚀 Chamando getDrugInteractionsBetweenCompounds("${compoundName}", "${secondCompound.trim()}")`);
-      const results = await getDrugInteractionsBetweenCompounds(compoundName, secondCompound.trim());
-      
-      console.log('📊 Resultado da busca:', results);
-      console.log('📊 Tipo do resultado:', typeof results);
-      console.log('📊 É array?', Array.isArray(results));
-      
-      // A função sempre retorna um objeto com propriedade 'interactions'
-      if (results && results.interactions) {
-        console.log('✅ Resultado tem propriedade interactions:', results.interactions.length);
-        setCrossSearchResults(results.interactions);
-        
-        if (results.interactions.length === 0) {
-          setCrossSearchError(`Nenhuma interação específica encontrada entre "${compoundName}" e "${secondCompound}"`);
-        } else {
-          console.log(`✅ ${results.interactions.length} interações encontradas!`);
-          console.log('📋 Fonte dos dados:', results.source);
-          console.log('📋 Método de busca:', results.searchMethod);
-        }
-      } else {
-        console.warn('⚠️ Formato de resultado inesperado:', results);
-        setCrossSearchResults([]);
-        setCrossSearchError('Formato de resposta inesperado da API');
-      }
-    } catch (error) {
-      console.error('❌ Erro na busca cruzada:', error);
-      console.error('❌ Stack trace:', error.stack);
-      setCrossSearchError(`Erro ao buscar interações: ${error.message}`);
-      setCrossSearchResults([]);
-    } finally {
-      setIsCrossSearching(false);
-      console.log('🏁 Busca cruzada finalizada');
-    }
-  };
+const SourceItem = styled.div`
+  background: white;
+  border: 1px solid #dee2e6;
+  border-radius: 6px;
+  padding: 12px;
+  transition: all 0.2s ease;
+  
+  &:hover {
+    border-color: #007bff;
+    box-shadow: 0 2px 8px rgba(0, 123, 255, 0.1);
+    transform: translateY(-1px);
+  }
+`;
 
-  const handleClearSearch = () => {
-    setSecondCompound('');
-    setCrossSearchResults(null);
-    setCrossSearchError('');
-  };
+const SourceTitle = styled.h4`
+  margin: 0 0 6px 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #2c3e50;
+  line-height: 1.3;
+`;
 
-  const handleKeyPress = (e) => {
-    if (e.key === 'Enter') {
-      handleCrossSearch();
-    }
-  };
+const SourceUrl = styled.a`
+  color: #007bff;
+  text-decoration: none;
+  font-size: 12px;
+  word-break: break-all;
+  
+  &:hover {
+    text-decoration: underline;
+  }
+`;
 
-  // Determinar quais dados exibir
-  const displayData = crossSearchResults !== null ? crossSearchResults : drugInteractions;
-  const displayLoading = isCrossSearching || isLoading;
+const SourceMeta = styled.div`
+  margin-top: 6px;
+  font-size: 11px;
+  color: #6c757d;
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+`;
 
-  const renderContent = () => {
-    if (displayLoading) {
-      const loadingMessage = isCrossSearching 
-        ? `🔍 Buscando interações entre "${compoundName}" e "${secondCompound}"...`
-        : '🔍 Carregando interações medicamentosas via DrugBank...';
-      
-      return <LoadingState>{loadingMessage}</LoadingState>;
-    }
 
-    // Exibir erro de busca cruzada se houver
-    if (crossSearchError) {
-      return (
-        <EmptyState>
-          ❌ {crossSearchError}
-          <br />
-          <small style={{ color: '#6c757d', fontSize: '12px', marginTop: '8px', display: 'block' }}>
-            Tente com nomes diferentes ou verifique a ortografia
-          </small>
-        </EmptyState>
-      );
-    }
 
-    // Se displayData é 0 (nenhuma interação encontrada), exibir (0)
-    if (displayData === 0) {
-      const message = crossSearchResults !== null 
-        ? `Interações entre "${compoundName}" e "${secondCompound}": (0)`
-        : 'Drug-Drug Interactions: (0)';
-      
-      return (
-        <EmptyState>
-          {message}
-          <br />
-          <small style={{ color: '#6c757d', fontSize: '12px', marginTop: '8px', display: 'block' }}>
-            Nenhuma interação encontrada na base DrugBank
-          </small>
-        </EmptyState>
-      );
-    }
+const StatsContainer = styled.div`
+  margin-top: 16px;
+  padding: 12px;
+  background: #e3f2fd;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #1565c0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+`;
 
-    // Se displayData é um array vazio ou não tem dados específicos de DDI
-    if (!displayData || (Array.isArray(displayData) && displayData.length === 0)) {
-      const message = crossSearchResults !== null 
-        ? `Interações entre "${compoundName}" e "${secondCompound}": (0)`
-        : 'Drug-Drug Interactions: (0)';
-      
-      return (
-        <EmptyState>
-          {message}
-          <br />
-          <small style={{ color: '#6c757d', fontSize: '12px', marginTop: '8px', display: 'block' }}>
-            Nenhuma interação encontrada na base DrugBank
-          </small>
-        </EmptyState>
-      );
-    }
+const StatItem = styled.span`
+  display: flex;
+  align-items: center;
+  gap: 4px;
+`;
 
-    // Se houver dados específicos de DDI do DrugBank
-    if (Array.isArray(displayData) && displayData.length > 0) {
-      const isSpecificSearch = crossSearchResults !== null;
-      const searchInfo = isSpecificSearch 
-        ? `Interações específicas entre "${compoundName}" e "${secondCompound}"`
-        : `Interações encontradas para "${compoundName}"`;
+const ViewAllSourcesButton = styled.button`
+  background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  
+  &:hover {
+    background: linear-gradient(135deg, #0056b3 0%, #004085 100%);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(0, 123, 255, 0.3);
+  }
+`;
 
-      return (
-        <>
-          <div style={{ marginBottom: '16px', color: '#495057', fontSize: '14px' }}>
-            <strong>{displayData.length}</strong> interação(ões) encontrada(s) via DrugBank API
-            <br />
-            <small style={{ color: '#6c757d', fontSize: '12px', marginTop: '4px', display: 'block' }}>
-              {searchInfo}
-            </small>
+// Componente para exibir fontes bibliográficas
+const BibliographicSourcesSection = ({ interactionsData, additionalInfo, onSourcesClick }) => {
+  // Extrair fontes dos metadados da Perplexity
+  const sources = interactionsData?.metadata?.search_results || [];
+  const statistics = interactionsData?.statistics || {};
+  
+  // Se não há fontes, não exibir a seção
+  if (sources.length === 0 && !additionalInfo?.sources) {
+    return (
+      <BibliographicContainer>
+        <BibliographicHeader>
+          📚 Fontes Bibliográficas
+        </BibliographicHeader>
+        <BibliographicContent>
+          <div style={{ textAlign: 'center', color: '#6c757d', fontStyle: 'italic' }}>
+            Nenhuma fonte bibliográfica específica disponível para esta consulta.
           </div>
-          <TableWrapper>
-            <Table>
-              <TableHeader>
-                <tr>
-                  <TableHeaderCell>Substância Interagente</TableHeaderCell>
-                  <TableHeaderCell>Tipo de Interação</TableHeaderCell>
-                  <TableHeaderCell>Severidade</TableHeaderCell>
-                  <TableHeaderCell>Descrição</TableHeaderCell>
-                  <TableHeaderCell>Evidência</TableHeaderCell>
-                  <TableHeaderCell>Mecanismo</TableHeaderCell>
-                </tr>
-              </TableHeader>
-              <TableBody>
-                {displayData.map((interaction, index) => (
-                  <TableRow key={interaction.id || index}>
-                    <TableCell>
-                      <strong>{interaction.interactingSubstance}</strong>
-                      {interaction.drugbankId && (
-                        <div style={{ fontSize: '11px', color: '#6c757d', marginTop: '2px' }}>
-                          ID: {interaction.drugbankId}
-                        </div>
-                      )}
-                      {interaction.searchType && (
-                        <div style={{ fontSize: '10px', color: '#007bff', marginTop: '2px', fontStyle: 'italic' }}>
-                          {interaction.searchType === 'cross_compound_search' ? 'Busca Direta' : 'Busca Reversa'}
-                        </div>
-                      )}
-                    </TableCell>
-                    <TableCell>{interaction.interactionType}</TableCell>
-                    <TableCell>
-                      <Badge type={interaction.severity?.toLowerCase()}>
-                        {interaction.severity}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div style={{ maxWidth: '300px', lineHeight: '1.4' }}>
-                        {interaction.description}
-                        {interaction.management && interaction.management !== 'Consulte um profissional de saúde' && (
-                          <div style={{ fontSize: '12px', color: '#007bff', marginTop: '4px', fontStyle: 'italic' }}>
-                            <strong>Manejo:</strong> {interaction.management}
-                          </div>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell>{interaction.evidence}</TableCell>
-                    <TableCell>
-                      <div style={{ fontSize: '12px', maxWidth: '200px' }}>
-                        {interaction.mechanism}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableWrapper>
-          <div style={{ marginTop: '12px', fontSize: '11px', color: '#6c757d', fontStyle: 'italic' }}>
-            Dados fornecidos pela DrugBank API. Última atualização: {new Date().toLocaleDateString('pt-BR')}
-            {isSpecificSearch && (
-              <div style={{ marginTop: '4px' }}>
-                Busca específica entre dois compostos realizada em {new Date().toLocaleTimeString('pt-BR')}
-              </div>
+        </BibliographicContent>
+      </BibliographicContainer>
+    );
+  }
+
+  return (
+    <BibliographicContainer>
+      <BibliographicHeader>
+        📚 Fontes Bibliográficas Consultadas
+      </BibliographicHeader>
+      
+      <BibliographicContent>
+        {/* Lista de Fontes */}
+        {sources.length > 0 && (
+          <SourcesList>
+            {sources.slice(0, 5).map((source, index) => (
+              <SourceItem key={index}>
+                <SourceTitle>
+                  {index + 1}. {source.title || 'Fonte Médica Especializada'}
+                </SourceTitle>
+                {source.url && (
+                  <SourceUrl 
+                    href={source.url} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    title="Abrir fonte em nova aba"
+                  >
+                    🔗 {source.url}
+                  </SourceUrl>
+                )}
+                <SourceMeta>
+                  {source.date && <span>📅 {source.date}</span>}
+                  {source.domain && <span>🌐 {source.domain}</span>}
+                  {source.type && <span>📄 {source.type}</span>}
+                </SourceMeta>
+              </SourceItem>
+            ))}
+          </SourcesList>
+        )}
+
+        {/* Fontes adicionais extraídas do conteúdo */}
+        {additionalInfo?.sources && (
+          <div style={{ marginTop: '16px' }}>
+            <h4 style={{ margin: '0 0 12px 0', fontSize: '14px', color: '#2c3e50' }}>
+              📖 Fontes Adicionais Identificadas:
+            </h4>
+            <div 
+              style={{ 
+                background: 'white', 
+                padding: '12px', 
+                borderRadius: '6px', 
+                border: '1px solid #dee2e6',
+                fontSize: '13px',
+                lineHeight: '1.5'
+              }}
+              dangerouslySetInnerHTML={{ 
+                __html: additionalInfo.sources.replace(/\n/g, '<br>') 
+              }} 
+            />
+          </div>
+        )}
+
+
+
+        {/* Estatísticas e Metadados */}
+        <StatsContainer>
+          <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+            <StatItem>
+              📊 Gerado por {interactionsData?.source || 'Perplexity AI'}
+            </StatItem>
+            <StatItem>
+              🕒 {interactionsData?.timestamp ? 
+                new Date(interactionsData.timestamp).toLocaleString('pt-BR') : 
+                'Data não disponível'
+              }
+            </StatItem>
+            {statistics.searchResults > 0 && (
+              <StatItem>
+                📚 {statistics.searchResults} fontes consultadas
+              </StatItem>
+            )}
+            {statistics.wordCount && (
+              <StatItem>
+                📝 {statistics.wordCount} palavras
+              </StatItem>
             )}
           </div>
-        </>
-      );
-    }
+          
+          {sources.length > 5 && (
+            <ViewAllSourcesButton 
+              onClick={onSourcesClick}
+              title="Ver todas as fontes bibliográficas"
+            >
+              Ver Todas as Fontes ({sources.length})
+            </ViewAllSourcesButton>
+          )}
+        </StatsContainer>
+      </BibliographicContent>
+    </BibliographicContainer>
+  );
+};
 
-    const message = crossSearchResults !== null 
-      ? `Interações entre "${compoundName}" e "${secondCompound}": (0)`
-      : 'Drug-Drug Interactions: (0)';
+const DrugInteractionsTable = ({ interactionsData, compoundName }) => {
+  const [isSourcesModalOpen, setIsSourcesModalOpen] = useState(false);
+
+  const handleSourcesClick = () => {
+    setIsSourcesModalOpen(true);
+  };
+
+  // Função para extrair dados da tabela markdown
+  const parseMarkdownTable = (content) => {
+    if (!content) return [];
     
+    const lines = content.split('\n');
+    const tableLines = lines.filter(line => line.includes('|') && line.trim().length > 0);
+    
+    if (tableLines.length < 2) return [];
+    
+    // Primeira linha são os cabeçalhos
+    const headers = tableLines[0]
+      .split('|')
+      .map(h => h.trim())
+      .filter(h => h.length > 0);
+    
+    // Pular a linha de separação (segunda linha)
+    const dataLines = tableLines.slice(2);
+    
+    return dataLines.map(line => {
+      const cells = line
+        .split('|')
+        .map(cell => cell.trim())
+        .filter(cell => cell.length > 0);
+      
+      const row = {};
+      headers.forEach((header, index) => {
+        row[header.toLowerCase().replace(/\s+/g, '_')] = cells[index] || '';
+      });
+      
+      return row;
+    });
+  };
+
+  // Função para extrair informações adicionais (fontes, citações, etc.)
+  const extractAdditionalInfo = (content) => {
+    if (!content) return {};
+    
+    const sections = content.split('\n## ');
+    const info = {};
+    
+    sections.forEach(section => {
+      if (section.includes('Fontes Consultadas') || section.includes('📚')) {
+        info.sources = section;
+      } else if (section.includes('Perguntas Relacionadas') || section.includes('❓')) {
+        info.relatedQuestions = section;
+      }
+    });
+    
+    return info;
+  };
+
+  if (!interactionsData || !interactionsData.content) {
     return (
-      <EmptyState>
-        {message}
-        <br />
-        <small style={{ color: '#6c757d', fontSize: '12px', marginTop: '8px', display: 'block' }}>
-          Nenhuma interação encontrada na base DrugBank
-        </small>
-      </EmptyState>
+      <TableContainer>
+        <NoDataMessage>
+          📊 Nenhum dado de interação disponível para {compoundName}
+        </NoDataMessage>
+      </TableContainer>
     );
+  }
+
+  const tableData = parseMarkdownTable(interactionsData.rawContent || interactionsData.content);
+  const additionalInfo = extractAdditionalInfo(interactionsData.rawContent || interactionsData.content);
+
+  if (tableData.length === 0) {
+    return (
+      <TableContainer>
+        <TableTitle>
+          🧬 Interações Medicamentosas - {compoundName}
+        </TableTitle>
+        <div 
+          dangerouslySetInnerHTML={{ __html: interactionsData.content }}
+          style={{ lineHeight: '1.6', color: '#333' }}
+        />
+        {interactionsData.source && (
+          <SourceInfo>
+            📊 Dados gerados por {interactionsData.source} em {new Date(interactionsData.timestamp).toLocaleString('pt-BR')}
+          </SourceInfo>
+        )}
+      </TableContainer>
+    );
+  }
+
+  // Determinar as colunas baseadas nos dados
+  const columns = Object.keys(tableData[0]);
+  const columnHeaders = {
+    'medicamento': 'Medicamento',
+    'drug': 'Medicamento',
+    'severidade': 'Severidade',
+    'severity': 'Severidade',
+    'mecanismo': 'Mecanismo',
+    'mecanismo_de_interação': 'Mecanismo de Interação',
+    'mechanism': 'Mecanismo',
+    'efeitos_clínicos': 'Efeitos Clínicos',
+    'efeito_clínico': 'Efeitos Clínicos',
+    'clinical_effects': 'Efeitos Clínicos',
+    'effects': 'Efeitos',
+    'recomendações': 'Recomendações',
+    'recomendação': 'Recomendações',
+    'recommendations': 'Recomendações',
+    'management': 'Recomendações'
   };
 
   return (
     <TableContainer>
-      <SectionTitle>
-        🧬 Drug-Drug Interactions
-      </SectionTitle>
+      <TableTitle>
+        🧬 Interações Medicamentosas - {compoundName}
+      </TableTitle>
       
-      <FilterContainer>
-        <FilterTitle>
-          🔍 Busca Específica de Interações entre Dois Compostos
-        </FilterTitle>
-        <InputGroup>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
-            <span style={{ fontSize: '14px', color: '#495057', whiteSpace: 'nowrap' }}>
-              {compoundName || 'Composto Principal'}
-            </span>
-            <span style={{ fontSize: '14px', color: '#6c757d' }}>×</span>
-            <DrugBankAutocomplete
-              placeholder="Digite o segundo medicamento (ex: aspirin, warfarin)"
-              value={secondCompound}
-              onChange={setSecondCompound}
-              onSelect={(suggestion) => {
-                console.log('🎯 Medicamento selecionado:', suggestion);
-                setSecondCompound(suggestion.name || suggestion.highlight || suggestion.id);
-              }}
-              onKeyPress={handleKeyPress}
-              disabled={isCrossSearching}
-              region="us"
-              fuzzy={true}
-              debounceMs={400}
-            />
-          </div>
-          <SearchButton 
-            onClick={handleCrossSearch}
-            disabled={isCrossSearching || !secondCompound.trim()}
-          >
-            {isCrossSearching ? 'Buscando...' : 'Buscar Interações'}
-          </SearchButton>
-          {(crossSearchResults !== null || crossSearchError) && (
-            <ClearButton onClick={handleClearSearch}>
-              Limpar
-            </ClearButton>
-          )}
-        </InputGroup>
-      </FilterContainer>
-      
-      {renderContent()}
+      <StyledTable>
+        <TableHeader>
+          <tr>
+            {columns.map((column, index) => (
+              <HeaderCell key={index}>
+                {columnHeaders[column] || column.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+              </HeaderCell>
+            ))}
+          </tr>
+        </TableHeader>
+        <TableBody>
+          {tableData.map((row, index) => (
+            <TableRow key={index}>
+              {columns.map((column, colIndex) => (
+                <TableCell key={colIndex}>
+                  {column.includes('severidade') || column.includes('severity') ? (
+                    <SeverityBadge severity={row[column]}>
+                      {row[column]}
+                    </SeverityBadge>
+                  ) : (
+                    row[column]
+                  )}
+                </TableCell>
+              ))}
+            </TableRow>
+          ))}
+        </TableBody>
+      </StyledTable>
+
+      {/* Seção de Fontes Bibliográficas */}
+      <BibliographicSourcesSection 
+        interactionsData={interactionsData}
+        additionalInfo={additionalInfo}
+        onSourcesClick={handleSourcesClick}
+      />
+
+      <SourcesModal
+        isOpen={isSourcesModalOpen}
+        onClose={() => setIsSourcesModalOpen(false)}
+        sourcesData={interactionsData.metadata}
+        metadata={interactionsData.metadata}
+      />
     </TableContainer>
   );
 };

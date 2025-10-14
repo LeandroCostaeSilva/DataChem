@@ -10,8 +10,13 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "axios": "^1.12.2",
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
     "firebase": "^12.2.1",
+    "openai": "^6.2.0",
+    "perplexity": "^1.0.1",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "styled-components": "^6.1.19"

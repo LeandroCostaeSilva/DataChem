@@ -11,89 +11,131 @@ const SearchContainer = styled.div`
 
 const SearchInputContainer = styled.div`
   display: flex;
-  gap: 10px;
-  margin-bottom: 10px;
+  gap: 12px;
+  margin-bottom: 12px;
   
   @media (max-width: 768px) {
     flex-direction: column;
-    gap: 12px;
+    gap: 16px;
   }
   
   @media (max-width: 480px) {
-    gap: 8px;
+    gap: 12px;
   }
 `;
 
 const SearchInput = styled.input`
   flex: 1;
-  padding: 12px 16px;
+  padding: 16px 20px;
   font-size: 16px;
-  border: 2px solid #e1e5e9;
-  border-radius: 8px;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-weight: 400;
+  background: rgba(255, 255, 255, 0.05);
+  border: 2px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  color: #ffffff;
   outline: none;
-  transition: border-color 0.3s ease;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  backdrop-filter: blur(10px);
   -webkit-appearance: none;
   -webkit-tap-highlight-color: transparent;
 
   &:focus {
-    border-color: #007bff;
-    box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.15);
+    background: rgba(255, 255, 255, 0.08);
+    transform: translateY(-1px);
+  }
+
+  &:hover:not(:focus) {
+    border-color: rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.07);
   }
 
   &::placeholder {
-    color: #6c757d;
+    color: rgba(255, 255, 255, 0.6);
+    font-weight: 400;
+    font-size: 14px;
   }
   
   @media (max-width: 768px) {
-    padding: 14px 16px;
-    font-size: 16px; /* Evita zoom no iOS */
-    min-height: 44px; /* Tamanho mínimo recomendado para touch */
+    padding: 18px 20px;
+    font-size: 16px;
+    min-height: 56px;
   }
   
   @media (max-width: 480px) {
-    padding: 12px 14px;
-    border-radius: 6px;
+    padding: 16px 18px;
+    border-radius: 10px;
+    min-height: 52px;
   }
 `;
 
 const SearchButton = styled.button`
-  padding: 12px 24px;
-  background-color: #007bff;
+  padding: 16px 32px;
+  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
   color: white;
   border: none;
-  border-radius: 8px;
+  border-radius: 12px;
   font-size: 16px;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   font-weight: 600;
   cursor: pointer;
-  transition: background-color 0.3s ease;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
+  position: relative;
+  overflow: hidden;
+
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+    transition: left 0.5s;
+  }
 
   &:hover:not(:disabled) {
-    background-color: #0056b3;
+    background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(59, 130, 246, 0.3);
+    
+    &::before {
+      left: 100%;
+    }
   }
   
   &:active:not(:disabled) {
-    background-color: #004085;
-    transform: translateY(1px);
+    transform: translateY(0);
+    box-shadow: 0 4px 15px rgba(59, 130, 246, 0.2);
   }
 
   &:disabled {
-    background-color: #6c757d;
+    background: rgba(255, 255, 255, 0.1);
     cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+    
+    &::before {
+      display: none;
+    }
   }
   
   @media (max-width: 768px) {
-    padding: 14px 24px;
+    padding: 18px 32px;
     font-size: 16px;
-    min-height: 44px;
+    min-height: 56px;
     width: 100%;
   }
   
   @media (max-width: 480px) {
-    padding: 12px 20px;
-    border-radius: 6px;
+    padding: 16px 28px;
+    border-radius: 10px;
     font-size: 15px;
+    min-height: 52px;
   }
 `;
 
@@ -102,43 +144,61 @@ const SuggestionsContainer = styled.div`
   top: 100%;
   left: 0;
   right: 0;
-  background: white;
-  border: 1px solid #e1e5e9;
-  border-radius: 8px;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-  max-height: 300px;
+  background: rgba(17, 24, 39, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  backdrop-filter: blur(20px);
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3), 0 10px 10px -5px rgba(0, 0, 0, 0.2);
+  max-height: 320px;
   overflow-y: auto;
-  z-index: 1000;
-  margin-top: 4px;
+  z-index: 9999;
+  margin-top: 8px;
   -webkit-overflow-scrolling: touch;
+  animation: slideDown 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  
+  @keyframes slideDown {
+    from {
+      opacity: 0;
+      transform: translateY(-10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
   
   @media (max-width: 768px) {
-    max-height: 250px;
-    border-radius: 6px;
-    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
+    max-height: 280px;
+    border-radius: 10px;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.4);
   }
   
   @media (max-width: 480px) {
-    max-height: 200px;
-    margin-top: 2px;
+    max-height: 240px;
+    margin-top: 6px;
   }
 `;
 
 const SuggestionItem = styled.div`
-  padding: 12px 16px;
+  padding: 16px 20px;
   cursor: pointer;
-  border-bottom: 1px solid #f8f9fa;
-  transition: background-color 0.2s ease;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
   user-select: none;
+  color: rgba(255, 255, 255, 0.9);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-weight: 400;
 
   &:hover {
-    background-color: #f8f9fa;
+    background: rgba(59, 130, 246, 0.1);
+    color: #ffffff;
+    transform: translateX(4px);
   }
   
   &:active {
-    background-color: #e9ecef;
+    background: rgba(59, 130, 246, 0.2);
   }
 
   &:last-child {
@@ -146,33 +206,45 @@ const SuggestionItem = styled.div`
   }
 
   &.highlighted {
-    background-color: #e3f2fd;
+    background: rgba(59, 130, 246, 0.15);
+    color: #ffffff;
+    transform: translateX(4px);
   }
   
   @media (max-width: 768px) {
-    padding: 14px 16px;
+    padding: 18px 20px;
     font-size: 16px;
-    min-height: 44px;
+    min-height: 56px;
     display: flex;
     align-items: center;
   }
   
   @media (max-width: 480px) {
-    padding: 12px 14px;
+    padding: 16px 18px;
     font-size: 15px;
+    min-height: 52px;
   }
 `;
 
 const LoadingText = styled.div`
-  padding: 12px 16px;
-  color: #6c757d;
+  padding: 16px 20px;
+  color: rgba(255, 255, 255, 0.6);
   font-style: italic;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-weight: 400;
 `;
 
 const ErrorMessage = styled.div`
-  color: #dc3545;
+  color: #ef4444;
   font-size: 14px;
-  margin-top: 5px;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-weight: 500;
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  border-radius: 8px;
+  backdrop-filter: blur(10px);
 `;
 
 const SearchBox = ({ onSearch, isLoading }) => {
@@ -293,7 +365,13 @@ const SearchBox = ({ onSearch, isLoading }) => {
 
     setError('');
     setShowSuggestions(false);
-    onSearch(term);
+    
+    // Verificar se onSearch existe antes de chamar
+    if (typeof onSearch === 'function') {
+      onSearch(term);
+    } else {
+      console.error('onSearch não é uma função:', onSearch);
+    }
   };
 
   // Função para lidar com clique fora do componente
@@ -320,7 +398,7 @@ const SearchBox = ({ onSearch, isLoading }) => {
           value={searchTerm}
           onChange={handleInputChange}
           onKeyDown={handleKeyDown}
-          placeholder="Digite o nome de um composto químico (ex: aspirin, glucose, caffeine)..."
+          placeholder="Digite o nome químico ou insira a numeração CAS"
           disabled={isLoading}
         />
         <SearchButton

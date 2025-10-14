@@ -1,6 +1,5 @@
 import axios from 'axios';
 import { getAdverseReactions } from './fdaService.js';
-import { getDrugInteractions as getDrugBankInteractions } from './drugbankService.js';
 
 // Base URLs para as APIs do PubChem
 const PUBCHEM_BASE_URL = 'https://pubchem.ncbi.nlm.nih.gov/rest/pug';
@@ -202,53 +201,7 @@ export const getCompoundBioassays = async (cid) => {
   }
 };
 
-/**
- * Função para buscar interações medicamentosas específicas usando DrugBank API
- * @param {number} cid - CID do composto
- * @param {string} compoundName - Nome do composto (usado como fallback)
- * @returns {Promise<Array|number>} - Lista de interações medicamentosas ou (0) se não houver dados
- */
-export const getDrugInteractions = async (cid, compoundName = null) => {
-  try {
-    console.log(`🔍 Buscando Drug-Drug Interactions para CID ${cid}${compoundName ? ` (${compoundName})` : ''}`);
-    
-    // Se temos o nome do composto, usar diretamente o DrugBank
-    if (compoundName) {
-      const interactions = await getDrugBankInteractions(compoundName);
-      
-      if (interactions && interactions.length > 0) {
-        console.log(`✅ Encontradas ${interactions.length} interações via DrugBank para "${compoundName}"`);
-        return interactions;
-      }
-    }
 
-    // Fallback: tentar obter sinônimos do PubChem para buscar no DrugBank
-    try {
-      const synonyms = await getCompoundSynonyms(cid);
-      
-      if (synonyms && synonyms.length > 0) {
-        // Tentar com os primeiros sinônimos (mais prováveis de serem nomes comerciais)
-        for (const synonym of synonyms.slice(0, 3)) {
-          const interactions = await getDrugBankInteractions(synonym);
-          
-          if (interactions && interactions.length > 0) {
-            console.log(`✅ Encontradas ${interactions.length} interações via DrugBank para sinônimo "${synonym}"`);
-            return interactions;
-          }
-        }
-      }
-    } catch (synonymError) {
-      console.warn('Erro ao buscar sinônimos para DDI:', synonymError);
-    }
-
-    console.log(`ℹ️ Nenhuma interação encontrada para CID ${cid}`);
-    return 0;
-    
-  } catch (error) {
-    console.error('Erro ao buscar interações medicamentosas:', error);
-    return 0;
-  }
-};
 
 /**
  * Função para buscar informações de literatura relacionadas ao composto
@@ -307,10 +260,7 @@ export const getCompoundData = async (compoundName) => {
     // 5. Obter URL da imagem
     const imageURL = getCompoundImageURL(cid);
 
-    // 6. Buscar interações medicamentosas via DrugBank
-    const drugInteractions = await getDrugInteractions(cid, compoundName);
-
-    // 7. Buscar reações adversas no FDA
+    // 6. Buscar reações adversas no FDA
     console.log('🔍 PubChem Service - Buscando reações adversas para:', compoundName);
     const adverseReactions = await getAdverseReactions(compoundName);
     console.log('📊 PubChem Service - Reações adversas recebidas:', adverseReactions);
@@ -325,7 +275,6 @@ export const getCompoundData = async (compoundName) => {
       synonyms: synonyms.slice(0, 20), // Limitar a 20 sinônimos para não sobrecarregar a UI
       smiles: properties.SMILES || 'Não disponível',
       imageURL,
-      drugInteractions,
       adverseReactions,
       searchTerm: compoundName
     };

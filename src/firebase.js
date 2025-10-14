@@ -1,6 +1,6 @@
 // Import the functions you need from the SDKs you need
 import { initializeApp } from "firebase/app";
-import { getFirestore } from "firebase/firestore";
+import { initializeFirestore } from "firebase/firestore";
 // TODO: Add SDKs for Firebase products that you want to use
 // https://firebase.google.com/docs/web/setup#available-libraries
 
@@ -17,8 +17,13 @@ const firebaseConfig = {
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 
-// Initialize Cloud Firestore and get a reference to the service
-const db = getFirestore(app);
+// Initialize Cloud Firestore with robust settings to reduce network warnings in dev
+const db = initializeFirestore(app, {
+  ignoreUndefinedProperties: true,
+  // Helps in environments where streaming/HTTP2 may be blocked or flaky (dev proxies, VPNs)
+  experimentalAutoDetectLongPolling: true,
+  useFetchStreams: false
+});
 
 export { db };
 export default app;

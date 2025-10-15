@@ -34,6 +34,15 @@ jobs:
       
       - name: Build
         run: npm run build
+
+      - name: Add SPA fallback (404.html)
+        run: cp dist/index.html dist/404.html
+
+      - name: Include CNAME in artifact
+        run: |
+          if [ -f CNAME ]; then
+            cp CNAME dist/CNAME
+          fi
       
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3

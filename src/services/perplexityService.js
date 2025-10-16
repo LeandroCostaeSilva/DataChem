@@ -3,10 +3,13 @@
 // --- CONFIGURAÇÃO ---
 const API_KEY = import.meta.env.VITE_PERPLEXITY_API_KEY;
 const PERPLEXITY_API_URL = 'https://api.perplexity.ai/chat/completions';
+const isLocalHost = typeof window !== 'undefined' && /^(localhost|127\.0\.0\.1)$/i.test(window.location.hostname);
+const PERPLEXITY_PROXY_URL = (import.meta.env.VITE_PERPLEXITY_PROXY_URL || (import.meta.env.DEV || isLocalHost ? 'http://localhost:5050/api/perplexity' : ''));
 
 console.log('🔧 Configuração do Perplexity Service:');
 console.log('📝 VITE_PERPLEXITY_API_KEY from env:', import.meta.env.VITE_PERPLEXITY_API_KEY ? 'Definida' : 'Não definida');
 console.log('🔑 API_KEY final:', API_KEY ? API_KEY.substring(0, 10) + '...' : 'Não definida');
+console.log('🛡️ Proxy de API:', PERPLEXITY_PROXY_URL ? PERPLEXITY_PROXY_URL : 'não configurado');
 
 // === SISTEMA DE CACHE AVANÇADO PARA PERPLEXITY API ===
 // Cache otimizado para reduzir custos e melhorar performance
@@ -21,6 +24,8 @@ const CACHE_CONFIG = {
 
 // Cache em memória (Map) para acesso rápido
 const memoryCache = new Map();
+// Controle de requisições em andamento por chave
+const inFlightRequests = new Map();
 
 // Cache persistente (localStorage) para manter dados entre sessões
 const persistentCache = {
@@ -216,24 +221,23 @@ cleanupExpiredCache();
 
 // Configurações padrão para buscas médicas
 const DEFAULT_SEARCH_CONFIG = {
-  model: 'sonar-pro',
-  max_tokens: 1500, // Reduzido para melhor performance
+  // Perfil rápido e econômico por padrão (ajustado para respostas ricas)
+  model: 'sonar',
+  max_tokens: 1000,
   temperature: 0.1,
   top_p: 0.9,
   search_mode: 'academic',
-  search_domain_filter: [
-    'pubmed.ncbi.nlm.nih.gov',
-    'fda.gov',
-    'drugs.com',
-    'rxlist.com',
-    'medscape.com'
-  ], // Reduzido para domínios mais confiáveis
+  // Remover filtro de domínio por padrão para ampliar recall e evitar 422
+  search_domain_filter: undefined,
   return_related_questions: true,
-  search_recency_filter: 'year',
-  // Removido presence_penalty e frequency_penalty para evitar conflito
-  country: "US", // ISO country code
-  max_results: 5,
-  language: "en"
+  return_search_results: true,
+  return_citations: true,
+  // Permitir qualquer recência para aumentar o número de fontes
+  search_recency_filter: 'any',
+  country: "BR",
+  // Solicitar mais resultados por padrão
+  max_results: 10,
+  language: "pt"
 };
 
 // --- FUNÇÃO PRINCIPAL DE BUSCA ---
@@ -247,17 +251,21 @@ export const searchPerplexity = async (query, config = {}) => {
   console.log('🚀 Iniciando busca na Perplexity...');
   console.log('📝 Query:', query);
   console.log('⚙️ Config:', { ...DEFAULT_SEARCH_CONFIG, ...config });
+  const tSearchStart = (typeof performance !== 'undefined') ? performance.now() : Date.now();
   
   // Verificar cache primeiro
-  const cacheKey = generateCacheKey(query + JSON.stringify(config));
+  const cacheKey = config.cacheKeyOverride ? config.cacheKeyOverride : generateCacheKey(query, 'search');
   const cachedResponse = getCachedResponse(cacheKey);
   if (cachedResponse) {
+    const tHit = (typeof performance !== 'undefined') ? performance.now() : Date.now();
+    console.log(`⏱️ Busca servida do cache em ${Math.round(tHit - tSearchStart)}ms`);
     return { ...cachedResponse, cached: true };
   }
-  
+
   try {
-    if (!API_KEY) {
-      throw new Error('API Key da Perplexity não configurada');
+    // Só exigir API key no front-end quando NÃO estiver usando proxy
+    if (!PERPLEXITY_PROXY_URL && !API_KEY) {
+      throw new Error('API Key da Perplexity não configurada no cliente');
     }
     
     console.log('📤 Enviando busca para Perplexity...');
@@ -266,51 +274,127 @@ export const searchPerplexity = async (query, config = {}) => {
     
     // Configuração otimizada para pesquisas médicas
     const requestBody = {
-      model: config.model || 'sonar-pro', // Modelo mais avançado para pesquisas médicas
+      model: searchConfig.model,
       messages: [
         {
           role: 'system',
-          content: `Você é um assistente médico especialista. Forneça informações precisas e baseadas em evidências sobre interações medicamentosas e tópicos médicos. Sempre cite fontes confiáveis e formate as respostas em markdown estruturado e claro. RESPONDA SEMPRE EM PORTUGUÊS BRASILEIRO. Para tabelas de interações medicamentosas, use o formato markdown com colunas: Medicamento, Severidade, Mecanismo de Interação, Efeitos Clínicos e Recomendações.`
+          content: `Você é um farmacologista clínico. Produza respostas baseadas em evidências e formate em markdown. Para interações medicamentosas:
+
+1) Gere PRIMEIRO uma TABELA markdown com 10–12 linhas e colunas: | Medicamento | Severidade | Mecanismo de Interação | Efeitos Clínicos | Recomendações |
+2) Na coluna "Severidade", informe o nível (Leve/Moderada/Grave) e, ENTRE PARÊNTESES, detalhe: Nível de evidência (Alta/Moderada/Baixa), Probabilidade (Alta/Média/Baixa) e Impacto esperado (ex.: ↑ INR, ↑ AUC 1.5–2x).
+3) Em "Mecanismo", indique Farmacocinética/Farmacodinâmica e cite vias (ex.: CYP2C9, CYP3A4, P‑gp, pH gástrico).
+4) Em "Efeitos Clínicos", descreva objetivamente o efeito esperado.
+5) Em "Recomendações", traga ação prática (evitar, monitorar marcador, ajustar dose, janela de administração).
+6) Após a tabela, inclua uma seção intitulada "Referências bibliográficas (máx. 10)" listando até 10 fontes confiáveis, numeradas no formato: [n] Título — URL.
+
+RESPONDA SEMPRE EM PORTUGUÊS BRASILEIRO.`
         },
         {
           role: 'user',
           content: query
         }
       ],
-      max_tokens: 2000, // Mais tokens para respostas detalhadas
-      temperature: 0.1, // Baixa criatividade para precisão médica
-      top_p: 0.9,
-      search_mode: 'academic', // Priorizar fontes acadêmicas
-      search_domain_filter: [
-        'pubmed.ncbi.nlm.nih.gov',
-        'clinicaltrials.gov',
-        'fda.gov',
-        'ema.europa.eu',
-        'who.int',
-        'cochrane.org',
-        'uptodate.com',
-        'drugs.com',
-        'rxlist.com',
-        'medscape.com'
-      ], // Filtrar por domínios médicos confiáveis
-      return_related_questions: true,
-      search_recency_filter: 'year', // Priorizar informações recentes
+      max_tokens: searchConfig.max_tokens,
+      temperature: searchConfig.temperature,
+      top_p: searchConfig.top_p,
+      search_mode: searchConfig.search_mode,
+      search_domain_filter: searchConfig.search_domain_filter,
+      return_related_questions: searchConfig.return_related_questions,
+      return_search_results: searchConfig.return_search_results,
+      return_citations: searchConfig.return_citations,
+      search_recency_filter: searchConfig.search_recency_filter,
+      country: searchConfig.country,
+      language: searchConfig.language,
+      max_results: searchConfig.max_results,
       stream: false
     };
 
-    const response = await fetch(PERPLEXITY_API_URL, {
+    // Reutilizar requisição em andamento para mesma chave (evita duplicidade)
+    if (inFlightRequests.has(cacheKey)) {
+      console.log('⏳ Requisição já em andamento; reutilizando resultado para', cacheKey);
+      return await inFlightRequests.get(cacheKey);
+    }
+
+    const tNetworkStart = (typeof performance !== 'undefined') ? performance.now() : Date.now();
+    const controller = new AbortController();
+    const timeoutMs = config.timeoutMs || 7000; // time-out de rede rápido
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    const endpoint = PERPLEXITY_PROXY_URL || PERPLEXITY_API_URL;
+    const headers = {
+      'Content-Type': 'application/json'
+    };
+    if (!PERPLEXITY_PROXY_URL) {
+      headers['Authorization'] = `Bearer ${API_KEY}`;
+    }
+    const networkPromise = fetch(endpoint, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${API_KEY}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(requestBody)
+      headers,
+      body: JSON.stringify(requestBody),
+      signal: controller.signal
     });
+    inFlightRequests.set(cacheKey, networkPromise);
+    const response = await networkPromise.finally(() => inFlightRequests.delete(cacheKey));
+    clearTimeout(timeoutId);
 
     if (!response.ok) {
       const errorText = await response.text();
       console.error('Perplexity API error:', response.status, errorText);
-      
+      // Compatibilidade: em 400/422, retentar com corpo mínimo sem filtros adicionais
+      if (response.status === 400 || response.status === 422) {
+        console.warn('⚠️ HTTP', response.status, '- Retentando com corpo simplificado...');
+        const minimalBody = {
+          model: searchConfig.model,
+          messages: requestBody.messages,
+          max_tokens: searchConfig.max_tokens,
+          temperature: searchConfig.temperature,
+          top_p: searchConfig.top_p,
+          return_search_results: true,
+          return_citations: true,
+          stream: false
+        };
+
+        const controller2 = new AbortController();
+        const timeoutMs2 = (config.timeoutMs || 7000) + 8000;
+        const timeoutId2 = setTimeout(() => controller2.abort(), timeoutMs2);
+        const retryPromise = fetch(endpoint, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(minimalBody),
+          signal: controller2.signal
+        });
+        const retryResponse = await retryPromise.finally(() => clearTimeout(timeoutId2));
+
+        if (!retryResponse.ok) {
+          const retryText = await retryResponse.text();
+          console.error('❌ Falha na requisição simplificada:', retryResponse.status, retryText);
+          let errorMessage = `Erro HTTP ${retryResponse.status}: ${retryText}`;
+          throw new Error(errorMessage);
+        }
+
+        const retryData = await retryResponse.json();
+        console.log('✅ Requisição simplificada bem-sucedida. Prosseguindo com parsing.');
+
+        const msgRetry = retryData?.choices?.[0]?.message || {};
+        const perplexityResultsRetry = {
+          content: msgRetry.content || retryData.content || '',
+          search_results: retryData.search_results || msgRetry.search_results || msgRetry.sources || [],
+          citations: retryData.citations || msgRetry.citations || msgRetry.source_attributions || [],
+          related_questions: retryData.related_questions || msgRetry.related_questions || [],
+          usage: retryData.usage || {},
+          model: retryData.model,
+          timestamp: new Date().toISOString(),
+          cached: false,
+          raw_response: retryData
+        };
+
+        if (!config.cacheKeyOverride) {
+          setCachedResponse(cacheKey, perplexityResultsRetry);
+        }
+        const tSearchEndRetry = (typeof performance !== 'undefined') ? performance.now() : Date.now();
+        console.log(`⏱️ Tempo total da busca (retry): ${Math.round(tSearchEndRetry - tSearchStart)}ms`);
+        return perplexityResultsRetry;
+      }
+
       // Fornecer mensagens de erro mais específicas baseadas no status
       let errorMessage;
       switch (response.status) {
@@ -337,6 +421,8 @@ export const searchPerplexity = async (query, config = {}) => {
     }
 
     const data = await response.json();
+    const tNetworkEnd = (typeof performance !== 'undefined') ? performance.now() : Date.now();
+    console.log(`⏱️ Tempo de rede Perplexity: ${Math.round(tNetworkEnd - tNetworkStart)}ms`);
     
     console.log('📦 Resposta recebida da Perplexity');
     console.log('📊 Dados recebidos:', {
@@ -351,11 +437,13 @@ export const searchPerplexity = async (query, config = {}) => {
     }
     
     // Usar estrutura real da API Perplexity
+    const msg = data?.choices?.[0]?.message || {};
     const perplexityResults = {
-      content: data.choices[0].message.content,
-      search_results: data.search_results || [],
-      citations: data.citations || [],
-      related_questions: data.related_questions || [],
+      content: msg.content || data.content || '',
+      // Capturar possíveis fontes/citações anexadas na própria mensagem
+      search_results: data.search_results || msg.search_results || msg.sources || [],
+      citations: data.citations || msg.citations || msg.source_attributions || [],
+      related_questions: data.related_questions || msg.related_questions || [],
       usage: data.usage || {},
       model: data.model,
       timestamp: new Date().toISOString(),
@@ -370,18 +458,34 @@ export const searchPerplexity = async (query, config = {}) => {
       related_questions_count: perplexityResults.related_questions.length
     });
     
-    // Armazenar no cache
-    setCachedResponse(cacheKey, perplexityResults);
+    // Armazenar no cache (evitar sobrescrever chave de interações quando override ativo)
+    if (!config.cacheKeyOverride) {
+      setCachedResponse(cacheKey, perplexityResults);
+    } else {
+      console.log('💡 Cache override ativo; não salvando resposta bruta sob chave de interações.');
+    }
+    const tSearchEnd = (typeof performance !== 'undefined') ? performance.now() : Date.now();
+    console.log(`⏱️ Tempo total da busca: ${Math.round(tSearchEnd - tSearchStart)}ms`);
     
     return perplexityResults;
   } catch (error) {
+    // Classificação de erros comuns de rede
+    const isAbort = error.name === 'AbortError';
+    const isFailedFetch = /Failed to fetch|TypeError/.test(error.message || '');
+    const hint = isAbort
+      ? 'Timeout: conexão lenta ou bloqueada'
+      : isFailedFetch
+      ? 'Falha de rede/CORS: requisições do navegador podem estar bloqueadas'
+      : 'Erro de rede/HTTP desconhecido';
+
     console.error('❌ Erro na função searchPerplexity:', {
       message: error.message,
       status: error.status,
-      code: error.code || 'N/A'
+      code: error.code || 'N/A',
+      hint
     });
-    
-    throw new Error(`Erro na API Perplexity: ${error.message}`);
+
+    throw new Error(`Erro na API Perplexity: ${error.message} (${hint})`);
   }
 }
 
@@ -540,6 +644,7 @@ function generateBasicInteractionsTable(compoundName) {
  */
 export const generateDrugInteractions = async (compoundName, options = {}) => {
   console.log('🎯 Iniciando geração de interações para:', compoundName);
+  const tGenStart = (typeof performance !== 'undefined') ? performance.now() : Date.now();
   
   try {
     console.log('🤖 Usando Perplexity AI...');
@@ -551,30 +656,74 @@ export const generateDrugInteractions = async (compoundName, options = {}) => {
     const cachedResponse = getCachedResponse(cacheKey);
     if (cachedResponse) {
       console.log('✅ Interações encontradas no cache:', compoundName);
+      const tGenHit = (typeof performance !== 'undefined') ? performance.now() : Date.now();
+      console.log(`⏱️ Tempo total (cache): ${Math.round(tGenHit - tGenStart)}ms`);
       return cachedResponse;
+    }
+
+    // Se existir requisição em andamento para esta chave, aguardar
+    if (typeof inFlightRequests !== 'undefined' && inFlightRequests.has(cacheKey)) {
+      console.log('⏳ Geração já em andamento; aguardando resultado para', cacheKey);
+      return await inFlightRequests.get(cacheKey);
     }
     
     // Query específica em português para buscar interações medicamentosas
-    const query = `Crie uma tabela abrangente de interações medicamentosas para ${compoundName} em português brasileiro. A tabela deve incluir as seguintes colunas:
+    const query = `Crie uma tabela abrangente e detalhada de interações medicamentosas para ${compoundName} em português brasileiro. A tabela deve incluir as seguintes colunas:
 
 | Medicamento | Severidade | Mecanismo de Interação | Efeitos Clínicos | Recomendações |
 |-------------|------------|------------------------|------------------|---------------|
 
-Inclua pelo menos 8-10 interações conhecidas, classificando a severidade como: Leve, Moderada ou Grave.
-Use fontes médicas confiáveis e baseadas em evidências.
-Formate a resposta EXCLUSIVAMENTE como uma tabela markdown bem estruturada.
-Responda APENAS em português brasileiro.`;
+Regras de formatação e conteúdo:
+- Inclua 10–12 interações relevantes e clinicamente importantes.
+- Na coluna "Severidade", informe o nível (Leve/Moderada/Grave) e, ENTRE PARÊNTESES, detalhe: Nível de evidência (Alta/Moderada/Baixa), Probabilidade (Alta/Média/Baixa) e Impacto esperado (qualitativo ou numérico, ex.: ↑ INR, ↑ AUC 1.5–2x).
+- Descreva o mecanismo com termos como Farmacocinética/Farmacodinâmica e cite vias (ex.: CYP2C9, P-gp, ácido gástrico, etc.).
+- Em "Efeitos Clínicos", detalhe sinais e desfechos (ex.: sangramento, arritmia, toxicidade), quando disponíveis.
+- Em "Recomendações", seja específico (ex.: evitar, monitorar INR/creatinina, ajustar dose, janela de administração).
+- Use fontes médicas confiáveis e baseadas em evidências.
+ - Após a tabela, inclua uma seção intitulada "Referências bibliográficas (máx. 10)", listando até 10 fontes numeradas no formato: [n] Título — URL.
+ - Responda APENAS em português brasileiro.`;
     
-    // Configuração específica para busca médica
+    // Configuração aprofundada para busca médica com mais fontes e tokens
     const searchConfig = {
-      model: 'sonar-pro', // Modelo mais avançado
-      country: "BR", // Mudado para Brasil
-      max_results: 10,
-      language: "pt" // Português
+      ...DEFAULT_SEARCH_CONFIG,
+      country: 'BR',
+      language: 'pt',
+      model: options.model || 'sonar',
+      max_tokens: options.max_tokens || 1000,
+      max_results: options.max_results || 10,
+      return_search_results: true,
+      return_citations: true,
+      search_recency_filter: options.search_recency_filter || 'any',
+      // Afrouxar filtro de domínio para aumentar recall de fontes
+      search_domain_filter: options.search_domain_filter || undefined
     };
     
-    console.log('🔍 Buscando informações sobre interações...');
-    const searchResults = await searchPerplexity(query, searchConfig);
+    console.log('🔍 Buscando informações sobre interações (tentativa 1)...');
+    let searchResults;
+    try {
+      searchResults = await searchPerplexity(query, { ...searchConfig, cacheKeyOverride: cacheKey, timeoutMs: 15000 });
+    } catch (err) {
+      const msg = (err?.message || '').toLowerCase();
+      console.warn('⚠️ Tentativa 1 falhou:', err?.message);
+      if (msg.includes('timeout') || msg.includes('abort') || msg.includes('rede') || msg.includes('network')) {
+        console.log('🔁 Tentando novamente com configuração mais tolerante...');
+        const retryConfig = {
+          ...DEFAULT_SEARCH_CONFIG,
+          country: 'BR',
+          language: 'pt',
+          model: 'sonar',
+          max_tokens: options.max_tokens || 1000,
+          max_results: options.max_results || 10,
+          return_search_results: true,
+          return_citations: true,
+          search_recency_filter: 'any',
+          search_domain_filter: options.search_domain_filter || undefined
+        };
+        searchResults = await searchPerplexity(query, { ...retryConfig, cacheKeyOverride: `${cacheKey}::retry`, timeoutMs: 30000 });
+      } else {
+        throw err;
+      }
+    }
     
     console.log('📋 Processando informações encontradas...');
     
@@ -589,9 +738,9 @@ Responda APENAS em português brasileiro.`;
     
     // Adicionar informações de fontes se disponíveis
     if (searchResults.search_results && searchResults.search_results.length > 0) {
-      formattedResponse += '\n\n## 📚 Fontes Consultadas:\n';
-      searchResults.search_results.slice(0, 5).forEach((result, index) => {
-        formattedResponse += `${index + 1}. [${result.title || 'Fonte médica'}](${result.url}) - ${result.date || 'Data não disponível'}\n`;
+      formattedResponse += '\n\n## Referências bibliográficas (máx. 10):\n';
+      searchResults.search_results.slice(0, 10).forEach((result, index) => {
+        formattedResponse += `${index + 1}. [${result.title || 'Fonte médica'}](${result.url})${result.date ? ` - ${result.date}` : ''}\n`;
       });
     }
     
@@ -630,6 +779,8 @@ Responda APENAS em português brasileiro.`;
     
     // Salvar no cache para futuras consultas
     setCachedResponse(cacheKey, structuredResponse);
+    const tGenEnd = (typeof performance !== 'undefined') ? performance.now() : Date.now();
+    console.log(`⏱️ Tempo total de geração: ${Math.round(tGenEnd - tGenStart)}ms`);
     
     console.log('✅ Interações geradas com sucesso pela Perplexity!');
     console.log('💾 Interações salvas no cache:', compoundName);
@@ -656,8 +807,8 @@ Responda APENAS em português brasileiro.`;
       throw new Error('Erro de autenticação: Verifique se a chave da API Perplexity está configurada corretamente');
     }
     
-    // Verificar se é erro de rede
-    if (error.message.includes('fetch') || error.message.includes('network') || error.message.includes('ENOTFOUND')) {
+    // Verificar se é erro de rede/timeout
+    if (error.message.includes('fetch') || error.message.includes('network') || error.message.includes('ENOTFOUND') || error.message.toLowerCase().includes('timeout') || error.message.toLowerCase().includes('abort')) {
       throw new Error('Erro de conexão: Verifique sua conexão com a internet');
     }
     
@@ -695,8 +846,10 @@ export const searchMedicalTopic = async (topic, options = {}) => {
     const config = {
       ...DEFAULT_SEARCH_CONFIG,
       ...options,
-      max_tokens: options.max_tokens || 800,
-      temperature: options.temperature || 0.2
+      max_tokens: options.max_tokens || 600,
+      temperature: options.temperature || 0.2,
+      country: 'BR',
+      language: 'pt'
     };
 
     const query = `Informações médicas sobre: ${topic}. 
@@ -707,7 +860,7 @@ export const searchMedicalTopic = async (topic, options = {}) => {
     - Prognóstico
     - Fontes científicas confiáveis`;
 
-    const result = await searchPerplexity(query, config);
+    const result = await searchPerplexity(query, { ...config, cacheKeyOverride: cacheKey });
     
     // Adicionar metadados de cache
     const enrichedResult = {
@@ -755,29 +908,32 @@ export const formatInteractionsResponse = (response) => {
       // Resposta direta como string
       rawResponse = response;
       console.log('✅ Resposta é string, comprimento:', rawResponse.length);
-    } else if (response && typeof response === 'object') {
-      // Verificar se é um objeto com propriedade content
-      if (response.content) {
-        rawResponse = response.content;
-        metadata = {
-          search_results: response.search_results || [],
-          citations: response.citations || [],
-          related_questions: response.related_questions || [],
-          usage: response.usage || {},
-          model: response.model || 'unknown'
-        };
-        console.log('✅ Resposta é objeto com conteúdo, comprimento:', rawResponse.length);
-      } else if (response.choices && response.choices[0] && response.choices[0].message && response.choices[0].message.content) {
-        // Formato direto da API Perplexity
-        rawResponse = response.choices[0].message.content;
-        metadata = {
-          search_results: response.search_results || [],
-          citations: response.citations || [],
-          related_questions: response.related_questions || [],
-          usage: response.usage || {},
-          model: response.model || 'unknown'
-        };
-        console.log('✅ Resposta é formato API Perplexity, comprimento:', rawResponse.length);
+  } else if (response && typeof response === 'object') {
+    // Verificar se é um objeto com propriedade content
+    if (response.content) {
+      rawResponse = response.content;
+      // Capturar fontes/citações em múltiplas estruturas
+      const message = response.choices?.[0]?.message || {};
+      metadata = {
+        search_results: response.search_results || message.search_results || message.sources || [],
+        citations: response.citations || message.citations || message.source_attributions || [],
+        related_questions: response.related_questions || message.related_questions || [],
+        usage: response.usage || {},
+        model: response.model || 'unknown'
+      };
+      console.log('✅ Resposta é objeto com conteúdo, comprimento:', rawResponse.length);
+    } else if (response.choices && response.choices[0] && response.choices[0].message && response.choices[0].message.content) {
+      // Formato direto da API Perplexity
+      rawResponse = response.choices[0].message.content;
+      const message = response.choices[0].message || {};
+      metadata = {
+        search_results: response.search_results || message.search_results || message.sources || [],
+        citations: response.citations || message.citations || message.source_attributions || [],
+        related_questions: response.related_questions || message.related_questions || [],
+        usage: response.usage || {},
+        model: response.model || 'unknown'
+      };
+      console.log('✅ Resposta é formato API Perplexity, comprimento:', rawResponse.length);
       } else {
         // Tentar converter objeto para string como fallback
         rawResponse = JSON.stringify(response);

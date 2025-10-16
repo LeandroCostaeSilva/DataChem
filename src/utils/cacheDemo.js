@@ -116,21 +116,28 @@ export const testCachePersistence = async () => {
   const stats1 = getCacheStatistics();
   console.log(`📦 Entradas no cache: ${stats1.totalEntries}`);
   
-  // Simular "recarregamento" da página verificando localStorage
-  const cacheKey = `perplexity_cache_drug_interactions_${compound.toLowerCase().trim()}`;
-  const cached = localStorage.getItem('perplexity_cache');
+  // Simular "recarregamento" da página verificando localStorage (v2)
+  const storageKey = 'perplexity_cache_v2';
+  const normalize = (name) => name
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_|_$/g, '');
+  const interactionsKey = `interactions_${normalize(compound)}`;
+  const cached = localStorage.getItem(storageKey);
   
   if (cached) {
     const cacheData = JSON.parse(cached);
-    const hasEntry = cacheData[cacheKey] !== undefined;
+    const hasEntry = cacheData[interactionsKey] !== undefined;
     
     console.log(`💾 Cache persistente: ${hasEntry ? '✅ ENCONTRADO' : '❌ NÃO ENCONTRADO'}`);
     
     if (hasEntry) {
-      const entry = cacheData[cacheKey];
-      const isExpired = Date.now() > entry.expiresAt;
+      const entry = cacheData[interactionsKey];
+      const isExpired = Date.now() - entry.timestamp > 24 * 60 * 60 * 1000; // 24h
       console.log(`⏰ Status: ${isExpired ? '❌ EXPIRADO' : '✅ VÁLIDO'}`);
-      console.log(`📅 Expira em: ${new Date(entry.expiresAt).toLocaleString()}`);
+      console.log(`📅 Timestamp: ${new Date(entry.timestamp).toLocaleString()}`);
     }
   }
   

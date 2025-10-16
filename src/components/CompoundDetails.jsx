@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import AdverseReactionsTable from './AdverseReactionsTable';
 import DrugInteractionsTable from './DrugInteractionsTable';
-import { generateDrugInteractions, formatInteractionsResponse, testPerplexityAPI } from '../services/perplexityService';
+import { generateDrugInteractions, formatInteractionsResponse } from '../services/perplexityService';
 
 const DetailsContainer = styled.div`
   background: rgba(17, 24, 39, 0.8);
@@ -681,10 +681,8 @@ const CompoundDetails = ({ compoundData, isLoading, error }) => {
     setInteractionsData(null);
 
     try {
-      // Primeiro, testar se a API está funcionando
-      console.log('🧪 Testando API Perplexity primeiro...');
-      await testPerplexityAPI();
-      console.log('✅ API teste passou, gerando interações...');
+      // Gerar interações diretamente sem teste adicional para reduzir latência
+      console.log('🚀 Gerando interações (sem teste prévio da API)...');
       
       const response = await generateDrugInteractions(compoundData.name);
       const formattedData = formatInteractionsResponse(response);

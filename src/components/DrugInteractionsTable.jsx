@@ -278,12 +278,29 @@ const ViewAllSourcesButton = styled.button`
 
 // Componente para exibir fontes bibliográficas
 const BibliographicSourcesSection = ({ interactionsData, additionalInfo, onSourcesClick }) => {
-  // Extrair fontes dos metadados da Perplexity
+  // Extrair fontes e citações dos metadados da Perplexity
   const sources = interactionsData?.metadata?.search_results || [];
+  const citations = interactionsData?.metadata?.citations || [];
   const statistics = interactionsData?.statistics || {};
-  
-  // Se não há fontes, não exibir a seção
-  if (sources.length === 0 && !additionalInfo?.sources) {
+
+  // Se não há search_results, tentar construir uma lista a partir das citações
+  const citationAsSources = citations
+    .map((c, idx) => {
+      if (!c) return null;
+      if (typeof c === 'string') {
+        return { title: `Citação ${idx + 1}`, url: c };
+      }
+      const title = c.title || c.source || c.label || `Citação ${idx + 1}`;
+      const url = c.url || c.source_url || c.href || c.link;
+      const domain = c.domain;
+      return (title || url) ? { title, url, domain, type: 'citation' } : null;
+    })
+    .filter(Boolean);
+
+  const displaySources = (sources && sources.length > 0) ? sources : citationAsSources;
+
+  // Se não há fontes nem citações, manter mensagem informativa
+  if ((displaySources?.length || 0) === 0 && !additionalInfo?.sources) {
     return (
       <BibliographicContainer>
         <BibliographicHeader>
@@ -306,9 +323,9 @@ const BibliographicSourcesSection = ({ interactionsData, additionalInfo, onSourc
       
       <BibliographicContent>
         {/* Lista de Fontes */}
-        {sources.length > 0 && (
+        {displaySources.length > 0 && (
           <SourcesList>
-            {sources.slice(0, 5).map((source, index) => (
+            {displaySources.slice(0, 5).map((source, index) => (
               <SourceItem key={index}>
                 <SourceTitle>
                   {index + 1}. {source.title || 'Fonte Médica Especializada'}
@@ -381,12 +398,12 @@ const BibliographicSourcesSection = ({ interactionsData, additionalInfo, onSourc
             )}
           </div>
           
-          {sources.length > 5 && (
+          {displaySources.length > 5 && (
             <ViewAllSourcesButton 
               onClick={onSourcesClick}
               title="Ver todas as fontes bibliográficas"
             >
-              Ver Todas as Fontes ({sources.length})
+              Ver Todas as Fontes ({displaySources.length})
             </ViewAllSourcesButton>
           )}
         </StatsContainer>
@@ -466,6 +483,26 @@ const DrugInteractionsTable = ({ interactionsData, compoundName }) => {
   const tableData = parseMarkdownTable(interactionsData.rawContent || interactionsData.content);
   const additionalInfo = extractAdditionalInfo(interactionsData.rawContent || interactionsData.content);
 
+  // Normaliza o texto da severidade para exibir apenas Leve/Moderada/Grave
+  const normalizeSeverity = (value) => {
+    if (!value) return '';
+    const str = String(value).toLowerCase();
+    if (str.includes('grave')) return 'Grave';
+    if (str.includes('moderada')) return 'Moderada';
+    if (str.includes('leve')) return 'Leve';
+    // Robustez: mapear equivalentes em inglês caso ocorram
+    if (str.includes('severe')) return 'Grave';
+    if (str.includes('moderate')) return 'Moderada';
+    if (str.includes('mild') || str.includes('light')) return 'Leve';
+    // Remover detalhamento entre parênteses, mantendo prefixo
+    const base = String(value).split('(')[0].trim();
+    const baseLower = base.toLowerCase();
+    if (baseLower === 'grave') return 'Grave';
+    if (baseLower === 'moderada') return 'Moderada';
+    if (baseLower === 'leve') return 'Leve';
+    return base || String(value);
+  };
+
   if (tableData.length === 0) {
     return (
       <TableContainer>
@@ -527,8 +564,8 @@ const DrugInteractionsTable = ({ interactionsData, compoundName }) => {
               {columns.map((column, colIndex) => (
                 <TableCell key={colIndex}>
                   {column.includes('severidade') || column.includes('severity') ? (
-                    <SeverityBadge severity={row[column]}>
-                      {row[column]}
+                    <SeverityBadge severity={normalizeSeverity(row[column])}>
+                      {normalizeSeverity(row[column])}
                     </SeverityBadge>
                   ) : (
                     row[column]

@@ -11,6 +11,7 @@
     "server": "node ./server/index.js"
   },
   "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.1.23",
     "@google/generative-ai": "^0.24.1",
     "axios": "^1.12.2",
     "cors": "^2.8.5",
@@ -21,7 +22,10 @@
     "perplexity": "^1.0.1",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
-    "styled-components": "^6.1.19"
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
+    "styled-components": "^6.1.19",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@eslint/js": "^9.33.0",

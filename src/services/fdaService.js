@@ -475,7 +475,8 @@ const performPaginatedSearch = async (query, maxResults) => {
       const remainingResults = maxResults - allResults.length;
       const currentLimit = Math.min(limitPerPage, remainingResults);
       
-      const url = `${FDA_BASE_URL}/drug/event.json?search=${encodeURIComponent(query)}&limit=${currentLimit}&skip=${skip}`;
+      const apiKeyParam = FDA_API_KEY ? `&api_key=${FDA_API_KEY}` : '';
+      const url = `${FDA_BASE_URL}/drug/event.json?search=${encodeURIComponent(query)}&limit=${currentLimit}&skip=${skip}${apiKeyParam}`;
       
       console.log(`📄 Buscando página ${Math.floor(skip / limitPerPage) + 1} (skip: ${skip}, limit: ${currentLimit})`);
       
@@ -924,7 +925,7 @@ const filterEventsByGenericName = (events, drugName) => {
 };
 
 /**
- * Processa eventos adversos agrupando por medicamento comercial que contém a substância genérica
+ * Processa eventos adversos que contêm a substância genérica
  * @param {Array} events - Lista de eventos adversos filtrados
  * @param {string} genericName - Nome genérico da substância pesquisada
  * @returns {Object} - Dados processados agrupados por medicamento

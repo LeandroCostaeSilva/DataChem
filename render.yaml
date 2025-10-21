@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: datachem-agent
+    runtime: node
+    rootDir: server
+    buildCommand: npm ci
+    startCommand: node index.js
+    autoDeploy: true
+    plan: free
+    envVars:
+      - key: PERPLEXITY_API_KEY
+        sync: false
+      - key: ALLOWED_ORIGINS
+        value: https://datachem.com.br,https://www.datachem.com.br
+      - key: PORT
+        value: 5050

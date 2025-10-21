@@ -1,5 +1,12 @@
 const isLocalHost = typeof window !== 'undefined' && /^(localhost|127\.0\.0\.1)$/i.test(window.location.hostname);
-const DEFAULT_AGENT_URL = (import.meta.env.DEV || isLocalHost) ? 'http://localhost:5050/api/agent/search' : '/api/agent/search';
+
+// Resolve URL do agente considerando ambiente e disponibilidade de backend
+const RESOLVED_AGENT_URL = (() => {
+  const envUrl = import.meta.env.VITE_AGENT_URL && String(import.meta.env.VITE_AGENT_URL).trim();
+  if (envUrl) return envUrl;
+  if (import.meta.env.DEV || isLocalHost) return 'http://localhost:5050/api/agent/search';
+  return null; // Produção sem backend disponível
+})();
 
 /**
  * Executa a orquestração via Claude Agent SDK no backend
@@ -10,7 +17,24 @@ export const runAgentSearch = async (compoundName) => {
   if (!compoundName || typeof compoundName !== 'string') {
     throw new Error('Nome de composto inválido');
   }
-  const url = import.meta.env.VITE_AGENT_URL || DEFAULT_AGENT_URL;
+
+  const url = RESOLVED_AGENT_URL;
+  // Em produção (Pages) sem backend remoto configurado, não faz fetch e retorna fallback
+  if (!url) {
+    if (typeof console !== 'undefined') {
+      console.warn('⚠️ Agente indisponível em produção: defina VITE_AGENT_URL apontando para um backend público.');
+    }
+    return {
+      content: '',
+      citations: [],
+      search_results: [],
+      model: 'fallback',
+      timestamp: new Date().toISOString(),
+      compound_name: compoundName,
+      note: 'Agente de interações indisponível no ambiente de produção (sem backend).'
+    };
+  }
+
   const resp = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

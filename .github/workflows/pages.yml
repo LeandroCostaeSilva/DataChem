@@ -33,6 +33,8 @@ jobs:
         run: npm ci
       
       - name: Build
+        env:
+          VITE_AGENT_URL: ${{ secrets.VITE_AGENT_URL }}
         run: npm run build
 
       - name: Add SPA fallback (404.html)

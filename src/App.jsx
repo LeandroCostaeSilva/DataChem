@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import styled from 'styled-components';
 import SearchBox from './components/SearchBox';
 import CompoundDetails from './components/CompoundDetails';
@@ -507,6 +507,18 @@ function App() {
       setIsLoading(false);
     }
   };
+
+  // Dev-only bootstrap: trigger automatic search from `?q=` query param
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const q = params.get('q');
+      if (q) {
+        handleSearch(q);
+      }
+    } catch {}
+  }, []);
 
   const handleHistorySelect = (searchTerm) => {
     handleSearch(searchTerm);

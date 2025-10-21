@@ -2,6 +2,7 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import { runAgentOrchestration } from './agents/claudeOrchestrator.js'
 // Node 18+ possui fetch global; sem dependência externa
 
 const app = express();
@@ -38,6 +39,21 @@ app.post('/api/perplexity', async (req, res) => {
     const hint = err.name === 'AbortError' ? 'Timeout' : 'Falha de rede';
     console.error('❌ Erro no proxy /api/perplexity:', err);
     res.status(500).json({ error: 'Erro no proxy', hint, message: err.message });
+  }
+});
+
+app.post('/api/agent/search', async (req, res) => {
+  try {
+    const { compoundName, term } = req.body || {};
+    const name = (compoundName || term || '').trim();
+    if (!name || name.length < 2) {
+      return res.status(400).json({ error: 'Parâmetro compoundName/term inválido' });
+    }
+    const result = await runAgentOrchestration(name);
+    res.json({ success: true, compoundName: name, ...result });
+  } catch (err) {
+    console.error('❌ Erro no endpoint /api/agent/search:', err);
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 

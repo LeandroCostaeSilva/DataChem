@@ -32,9 +32,18 @@ jobs:
       - name: Install dependencies
         run: npm ci
       
+      - name: Resolve VITE_AGENT_URL
+        run: |
+          URL="${{ secrets.VITE_AGENT_URL }}"
+          if [ -z "$URL" ]; then
+            URL="${{ vars.VITE_AGENT_URL }}"
+          fi
+          if [ -z "$URL" ]; then
+            URL="https://datachem-agent.onrender.com/api/agent/search"
+          fi
+          echo "VITE_AGENT_URL=$URL" >> $GITHUB_ENV
+
       - name: Build
-        env:
-          VITE_AGENT_URL: ${{ secrets.VITE_AGENT_URL }}
         run: npm run build
 
       - name: Add SPA fallback (404.html)

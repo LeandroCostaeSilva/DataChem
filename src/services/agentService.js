@@ -1,11 +1,15 @@
 const isLocalHost = typeof window !== 'undefined' && /^(localhost|127\.0\.0\.1)$/i.test(window.location.hostname);
 
+// Fallback de produção: backend Render público
+const PROD_FALLBACK_AGENT_URL = 'https://datachem-agent.onrender.com/api/agent/search';
+
 // Resolve URL do agente considerando ambiente e disponibilidade de backend
 const RESOLVED_AGENT_URL = (() => {
   const envUrl = import.meta.env.VITE_AGENT_URL && String(import.meta.env.VITE_AGENT_URL).trim();
   if (envUrl) return envUrl;
   if (import.meta.env.DEV || isLocalHost) return 'http://localhost:5050/api/agent/search';
-  return null; // Produção sem backend disponível
+  // Produção sem secret: usar Render como fallback
+  return PROD_FALLBACK_AGENT_URL;
 })();
 
 /**
@@ -19,10 +23,10 @@ export const runAgentSearch = async (compoundName) => {
   }
 
   const url = RESOLVED_AGENT_URL;
-  // Em produção (Pages) sem backend remoto configurado, não faz fetch e retorna fallback
+  // Em produção com fallback, prossegue usando Render
   if (!url) {
     if (typeof console !== 'undefined') {
-      console.warn('⚠️ Agente indisponível em produção: defina VITE_AGENT_URL apontando para um backend público.');
+      console.warn('⚠️ Agente indisponível: defina VITE_AGENT_URL ou confirme fallback Render.');
     }
     return {
       content: '',
@@ -58,12 +62,15 @@ export const fetchInteractionsViaAgent = async (compoundName, options = {}) => {
       url = 'http://localhost:5050/api/agent/interactions';
     } else if (RESOLVED_AGENT_URL) {
       url = RESOLVED_AGENT_URL.replace('/search', '/interactions');
+    } else {
+      // último fallback direto para Render
+      url = PROD_FALLBACK_AGENT_URL.replace('/search', '/interactions');
     }
   }
 
   if (!url) {
     if (typeof console !== 'undefined') {
-      console.warn('⚠️ Agente de interações indisponível em produção: defina VITE_AGENT_INTERACTIONS_URL.');
+      console.warn('⚠️ Agente de interações indisponível: defina VITE_AGENT_INTERACTIONS_URL.');
     }
     return {
       content: '',

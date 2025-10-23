@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import DrugInteractionsTable from './DrugInteractionsTable.jsx';
 import AdverseReactionsTable from './AdverseReactionsTable.jsx';
-import { runAgentSearch } from '../services/agentService.js';
+import { fetchInteractionsViaAgent } from '../services/agentService.js';
 
 export default function CompoundDetails({ compoundData, isLoading = false, error = '' }) {
   const [interactions, setInteractions] = useState(null);
@@ -33,7 +33,7 @@ export default function CompoundDetails({ compoundData, isLoading = false, error
       if (!compoundName) return;
       setLoadingInteractions(true);
       try {
-        const res = await runAgentSearch(compoundName);
+        const res = await fetchInteractionsViaAgent(compoundName);
         const data = res?.interactions ? res.interactions : res;
         if (!cancelled) setInteractions(data);
       } catch (e) {
@@ -63,32 +63,35 @@ export default function CompoundDetails({ compoundData, isLoading = false, error
 
   const cardStyle = {
     display: 'flex',
+    flexWrap: 'wrap',
     gap: 16,
     background: '#fff',
     border: '1px solid #e9ecef',
     borderRadius: 8,
     padding: 16,
+    boxSizing: 'border-box',
+    width: '100%',
+    maxWidth: '100%',
     alignItems: 'flex-start'
   };
-
-  const labelStyle = { color: '#6b7280', fontSize: 12 };
-  const valueStyle = { color: '#111827', fontSize: 14, fontWeight: 600 };
-  const infoGrid = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 };
+  const labelStyle = { color: '#6b7280', fontSize: 12, wordBreak: 'break-word', overflowWrap: 'anywhere' };
+  const valueStyle = { color: '#111827', fontSize: 14, fontWeight: 600, wordBreak: 'break-word', overflowWrap: 'anywhere' };
+  const infoGrid = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 };
 
   return (
     <div style={{ marginTop: 16 }}>
       {/* Identificação PubChem */}
       <div style={{ marginBottom: 16 }}>
-        <h3 style={{ margin: '0 0 8px 0' }}>🧪 Identificação química - PubChem</h3>
+        <h3 style={{ margin: '0 0 8px 0', background: '#007bff', color: '#fff', borderRadius: 6, padding: '6px 10px' }}>🧪 Identificação química - PubChem</h3>
         <div style={cardStyle}>
           {pubchemInfo.imageURL ? (
             <img
               src={pubchemInfo.imageURL}
               alt={`Estrutura 2D de ${compoundName}`}
-              style={{ width: 180, height: 180, objectFit: 'contain', borderRadius: 6, border: '1px solid #e5e7eb' }}
+              style={{ width: 180, height: 180, objectFit: 'contain', borderRadius: 6, border: '1px solid #e5e7eb', flexShrink: 0, maxWidth: '100%' }}
             />
           ) : (
-            <div style={{ width: 180, height: 180, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f3f4f6', borderRadius: 6, color: '#6b7280' }}>
+            <div style={{ width: 180, height: 180, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f3f4f6', borderRadius: 6, color: '#6b7280', border: '1px solid #e5e7eb', flexShrink: 0, maxWidth: '100%' }}>
               Sem imagem
             </div>
           )}
@@ -117,16 +120,16 @@ export default function CompoundDetails({ compoundData, isLoading = false, error
               </div>
               <div>
                 <div style={labelStyle}>SMILES</div>
-                <div style={{ ...valueStyle, fontFamily: 'monospace', fontWeight: 500 }}>{pubchemInfo.smiles || 'Não disponível'}</div>
+                <div style={{ ...valueStyle, fontFamily: 'monospace', fontWeight: 500, whiteSpace: 'nowrap', overflowX: 'auto', maxWidth: '100%' }}>{pubchemInfo.smiles || 'Não disponível'}</div>
               </div>
             </div>
 
             {pubchemInfo.synonyms && pubchemInfo.synonyms.length > 0 && (
               <div style={{ marginTop: 12 }}>
                 <div style={labelStyle}>Sinônimos (Top 10)</div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'flex-start', maxWidth: '100%' }}>
                   {pubchemInfo.synonyms.slice(0, 10).map((s, idx) => (
-                    <span key={idx} style={{ background: '#f3f4f6', border: '1px solid #e5e7eb', borderRadius: 12, padding: '4px 8px', fontSize: 12, color: '#374151' }}>{s}</span>
+                    <span key={idx} style={{ background: '#f3f4f6', border: '1px solid #e5e7eb', borderRadius: 12, padding: '4px 8px', fontSize: 12, color: '#374151', wordBreak: 'break-word' }}>{s}</span>
                   ))}
                 </div>
               </div>

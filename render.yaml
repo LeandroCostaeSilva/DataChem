@@ -10,6 +10,8 @@ services:
     envVars:
       - key: PERPLEXITY_API_KEY
         sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
       - key: ALLOWED_ORIGINS
         value: https://datachem.com.br,https://www.datachem.com.br
       - key: PORT

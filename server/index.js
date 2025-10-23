@@ -69,6 +69,30 @@ app.post('/api/agent/search', async (req, res) => {
   }
 });
 
+// Endpoint dedicado para interações via Agente Orquestrador
+app.post('/api/agent/interactions', async (req, res) => {
+  try {
+    const { compoundName, term, maxResults } = req.body || {};
+    const name = (compoundName || term || '').trim();
+    if (!name || name.length < 2) {
+      return res.status(400).json({ success: false, error: 'Parâmetro compoundName/term inválido' });
+    }
+
+    const result = await runAgentOrchestration(name);
+    const interactions = result?.interactions || null;
+
+    res.json({
+      success: true,
+      compoundName: name,
+      interactions: interactions ? { ...interactions, via: 'perplexity', orchestrator_model: 'claude-3-7-sonnet', maxResults: maxResults || null } : null
+    });
+  } catch (err) {
+    console.error('❌ Erro no endpoint /api/agent/interactions:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`🛡️ Proxy de Perplexity rodando em http://localhost:${PORT}/api/perplexity`);
+  console.log(`🤖 Agente Orquestrador disponível em http://localhost:${PORT}/api/agent/search e /api/agent/interactions`);
 });

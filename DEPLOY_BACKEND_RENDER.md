@@ -16,7 +16,8 @@ Este repositório já inclui um blueprint `render.yaml` que cria um Web Service 
    - Build Command: `npm ci`
    - Start Command: `node index.js`
 4) Defina as variáveis de ambiente:
-   - `PERPLEXITY_API_KEY`: cole sua chave
+   - `ANTHROPIC_API_KEY`: cole sua chave do Claude (não commit)
+   - `PERPLEXITY_API_KEY`: cole sua chave (se usar interações via Perplexity)
    - `ALLOWED_ORIGINS`: `https://datachem.com.br,https://www.datachem.com.br`
    - `PORT`: `5050` (opcional, já definido)
 5) Clique em "Apply" para criar e iniciar o deploy.

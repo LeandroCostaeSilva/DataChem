@@ -65,6 +65,46 @@ export default function DrugInteractionsTable({ interactionsData, compoundName, 
     return '';
   };
 
+  const resolveSourceLabel = (model) => {
+    const m = String(model || '').toLowerCase();
+    if (m === 'fallback') return 'fallback interno';
+    if (m.includes('claude')) return `Claude (${model})`;
+    return `Perplexity AI (${model})`;
+  };
+
+  const sourceBadgeBase = {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 6,
+    padding: '4px 10px',
+    borderRadius: 999,
+    fontSize: 12,
+    fontWeight: 600,
+    color: '#fff',
+    boxShadow: '0 1px 2px rgba(0,0,0,0.08)'
+  };
+
+  const sourceBadgeStyle = (model) => {
+    const m = String(model || '').toLowerCase();
+    if (m === 'fallback') return { ...sourceBadgeBase, background: '#6c757d' };
+    if (m.includes('claude')) return { ...sourceBadgeBase, background: '#8b5cf6' };
+    return { ...sourceBadgeBase, background: '#0ea5e9' };
+  };
+
+  const resolveBadgeLabel = (model) => {
+    const m = String(model || '').toLowerCase();
+    if (m === 'fallback') return 'Fallback';
+    if (m.includes('claude')) return 'Claude';
+    return 'Perplexity';
+  };
+
+  const sourceBadgeIcon = (model) => {
+    const m = String(model || '').toLowerCase();
+    if (m === 'fallback') return '🛟';
+    if (m.includes('claude')) return '🧠';
+    return '🔍';
+  };
+
   if (isLoading) {
     return (
       <div style={{ padding: '12px', display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -98,7 +138,13 @@ export default function DrugInteractionsTable({ interactionsData, compoundName, 
 
   return (
     <div style={containerStyle}>
-      <h3 style={{ marginTop: 0 }}>🧪 Interações Medicamentosas - {compoundName}</h3>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#007bff', color: '#fff', borderRadius: 6, padding: '8px 12px' }}>
+        <h3 style={{ margin: 0 }}>🧪 Interações Medicamentosas - {compoundName}</h3>
+        <span style={sourceBadgeStyle(model)} title={resolveSourceLabel(model)} aria-label={`Fonte: ${resolveSourceLabel(model)}`}>
+          <span aria-hidden="true" style={{ marginRight: 6 }}>{sourceBadgeIcon(model)}</span>
+          {resolveBadgeLabel(model)}
+        </span>
+      </div>
       {!hasContent ? (
         <div style={{ fontStyle: 'italic', color: '#6c757d' }}>Sem conteúdo retornado. Exibindo placeholder.</div>
       ) : (
@@ -129,7 +175,7 @@ export default function DrugInteractionsTable({ interactionsData, compoundName, 
 
       <div style={infoStyle}>
         <span>
-          Dados gerados por {model === 'fallback' ? 'fallback interno' : `Perplexity AI (${model})`} em {new Date(timestamp).toLocaleString('pt-BR')}
+          Dados gerados por {resolveSourceLabel(model)} em {new Date(timestamp).toLocaleString('pt-BR')}
         </span>
       </div>
     </div>

@@ -88,14 +88,60 @@ export const fetchInteractionsViaAgent = async (compoundName, options = {}) => {
     ...options,
   };
 
-  const resp = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ compoundName, ...payloadOptions })
-  });
-  const data = await resp.json().catch(() => ({ success: false, error: 'Resposta inválida do servidor' }));
-  if (!resp.ok || data.success === false) {
-    throw new Error(data.error || `Falha no agente (HTTP ${resp.status})`);
+  const timeoutMs = typeof options.timeoutMs === 'number' ? options.timeoutMs : 12000;
+  const retryDelayMs = typeof options.retryDelayMs === 'number' ? options.retryDelayMs : 800;
+  const enableRetry = options.retry !== false; // default true
+
+  const attempt = async () => {
+    const controller = new AbortController();
+    const to = setTimeout(() => controller.abort('timeout'), timeoutMs);
+    try {
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ compoundName, ...payloadOptions }),
+        signal: controller.signal
+      });
+      const data = await resp.json().catch(() => ({ success: false, error: 'Resposta inválida do servidor' }));
+      if (!resp.ok || data.success === false) {
+        throw new Error(data.error || `Falha no agente (HTTP ${resp.status})`);
+      }
+      return data.interactions ? data.interactions : data;
+    } finally {
+      clearTimeout(to);
+    }
+  };
+
+  try {
+    return await attempt();
+  } catch (err) {
+    const msg = String(err?.message || '');
+    const isTransient = /timeout|network|fetch|ECONNRESET|ENOTFOUND|502|503|504|429/i.test(msg);
+    if (typeof console !== 'undefined') {
+      console.warn('⚠️ Falha ao buscar interações:', msg);
+    }
+    if (!enableRetry || !isTransient) {
+      throw err;
+    }
+    await new Promise((r) => setTimeout(r, retryDelayMs));
+    try {
+      if (typeof console !== 'undefined') {
+        console.warn('🔄 Retentativa de busca de interações...');
+      }
+      return await attempt();
+    } catch (err2) {
+      if (typeof console !== 'undefined') {
+        console.warn('🛟 Aplicando fallback após erro de rede/transiente:', String(err2?.message || err2));
+      }
+      return {
+        content: '',
+        citations: [],
+        search_results: [],
+        model: 'fallback',
+        timestamp: new Date().toISOString(),
+        compound_name: compoundName,
+        note: 'Fallback após falha de rede/transiente no agente de interações'
+      };
+    }
   }
-  return data.interactions ? data.interactions : data;
 };

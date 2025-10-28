@@ -15,7 +15,7 @@ if (!API_KEY) {
   console.warn('⚠️ PERPLEXITY_API_KEY não definido. Configure no .env ou variável de ambiente.');
 }
 
-const DEFAULT_ALLOWED = ['https://datachem.com.br','https://www.datachem.com.br','http://localhost:5173','http://localhost:3000','http://localhost:3001'];
+const DEFAULT_ALLOWED = ['https://datachem.com.br','https://www.datachem.com.br','http://localhost:5173','http://localhost:3000','http://localhost:3001','http://localhost:3002'];
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS && process.env.ALLOWED_ORIGINS.trim() !== '')
   ? process.env.ALLOWED_ORIGINS.split(',').map(s => s.trim())
   : DEFAULT_ALLOWED;

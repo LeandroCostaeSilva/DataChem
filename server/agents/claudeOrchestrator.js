@@ -86,99 +86,165 @@ async function generateDrugInteractionsServer(compoundName, options = {}) {
     return generateBasicInteractions(compoundName);
   }
 
-  const searchConfig = {
+  const baseConfig = {
     model: 'sonar-pro',
     max_tokens: 1400,
     temperature: 0.2,
     top_p: 0.95,
+    language: 'pt',
+    country: 'BR'
   };
 
   const systemPrompt = `Você é um farmacologista clínico especialista em interações medicamentosas. Responda SEMPRE em português brasileiro.\n\nRegras para a TABELA:\n- Crie primeiro uma tabela Markdown com as colunas: | Medicamento | Severidade | Mecanismo de Interação | Efeitos Clínicos | Recomendações |\n- Use Severidade como: Leve/Moderada/Grave\n- Mecanismo: Farmacocinética/Farmacodinâmica e vias (CYP3A4, P-gp, etc.)\n- Efeitos clínicos objetivos\n- Recomendações práticas (evitar, monitorar, ajustar dose)`;
 
   const userQuery = `Gerar a tabela de interações medicamentosas abrangente para ${compoundName} seguindo as regras.`;
 
-  const body = {
-    model: searchConfig.model,
+  const makeBody = (model) => ({
+    model,
     messages: [
       { role: 'system', content: systemPrompt },
       { role: 'user', content: userQuery }
     ],
-    max_tokens: searchConfig.max_tokens,
-    temperature: searchConfig.temperature,
-    top_p: searchConfig.top_p,
+    max_tokens: baseConfig.max_tokens,
+    temperature: baseConfig.temperature,
+    top_p: baseConfig.top_p,
     stream: false,
     return_related_questions: true,
     return_search_results: true,
     return_citations: true,
-    language: 'pt',
-    country: 'BR'
+    language: baseConfig.language,
+    country: baseConfig.country
+  });
+
+  const extractContent = (json) => {
+    const message = json?.choices?.[0]?.message || {};
+    const msgContent = message?.content;
+    let contentText = '';
+    if (typeof msgContent === 'string') {
+      contentText = msgContent;
+    } else if (Array.isArray(msgContent)) {
+      contentText = msgContent
+        .map(block => typeof block === 'string' ? block : (block?.text || ''))
+        .filter(Boolean)
+        .join('\n')
+        .trim();
+    } else if (typeof json?.content === 'string') {
+      contentText = json.content;
+    } else if (Array.isArray(json?.content)) {
+      contentText = json.content.map(c => c?.text || '').join('\n').trim();
+    }
+    return {
+      contentText,
+      citations: json?.citations || message?.citations || [],
+      search_results: json?.search_results || message?.search_results || [],
+      model: json?.model
+    };
   };
 
-  const resp = await fetch(PERPLEXITY_API_URL, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${PPLX_API_KEY}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify(body)
-  });
-  log('Perplexity response status', resp.status);
+  const fetchWithTimeout = async (body, { timeoutMs = 15000 } = {}) => {
+    const controller = new AbortController();
+    const to = setTimeout(() => controller.abort('timeout'), timeoutMs);
+    try {
+      const resp = await fetch(PERPLEXITY_API_URL, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${PPLX_API_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(body),
+        signal: controller.signal
+      });
+      const rawText = await resp.text();
+      if (!resp.ok) {
+        let parsed;
+        try { parsed = JSON.parse(rawText); } catch { /* ignorar */ }
+        const errMsg = parsed?.error?.message || parsed?.error || rawText;
+        const e = new Error(`Erro Perplexity ${resp.status}: ${errMsg}`);
+        e.status = resp.status;
+        e.messageRaw = errMsg;
+        throw e;
+      }
+      try {
+        return JSON.parse(rawText);
+      } catch {
+        err('JSON inválido da Perplexity (ok=true)', rawText.slice(0, 300));
+        const e = new Error('Resposta inválida da Perplexity: corpo não-JSON');
+        e.status = resp.status;
+        e.messageRaw = rawText.slice(0, 300);
+        throw e;
+      }
+    } finally {
+      clearTimeout(to);
+    }
+  };
 
-  const rawText = await resp.text();
-  let json;
+  const trySequence = async () => {
+    // 1) Tenta sonar primeiro (mais compatível)
+    try {
+      const json = await fetchWithTimeout(makeBody('sonar'), { timeoutMs: 15000 });
+      return json;
+    } catch (e1) {
+      warn('Perplexity (sonar) falhou', e1?.message);
+      // Em casos de permission/invalid, tentar sonar-pro
+      if (e1?.status === 401 || e1?.status === 403 || e1?.status === 400 || /model|permission|invalid|unknown|not available/i.test(String(e1?.messageRaw))) {
+        try {
+          const json = await fetchWithTimeout(makeBody('sonar-pro'), { timeoutMs: 15000 });
+          return json;
+        } catch (e2) {
+          warn('Perplexity (sonar-pro) falhou', e2?.message);
+          throw e2;
+        }
+      }
+      // 429: aguarda e tenta novamente
+      if (e1?.status === 429) {
+        await new Promise(r => setTimeout(r, 1200));
+        try { return await fetchWithTimeout(makeBody('sonar'), { timeoutMs: 18000 }); } catch (e2) { throw e2; }
+      }
+      // 5xx ou timeout: uma retentativa
+      if ((e1?.status && e1.status >= 500) || /timeout|abort/i.test(String(e1?.message))) {
+        try { return await fetchWithTimeout(makeBody('sonar'), { timeoutMs: 18000 }); } catch (e2) { throw e2; }
+      }
+      throw e1;
+    }
+  };
+
   try {
-    json = JSON.parse(rawText);
-  } catch (e) {
-    err('JSON inválido da Perplexity', rawText.slice(0, 300));
-    throw new Error(`Resposta inválida da Perplexity (status ${resp.status})`);
-  }
+    const json = await trySequence();
+    try {
+      const msg = json?.choices?.[0]?.message;
+      const preview = (() => {
+        const mc = msg?.content;
+        if (typeof mc === 'string') return mc.slice(0, 140);
+        if (Array.isArray(mc)) return mc.map(b => (typeof b === 'string' ? b : (b?.text||''))).join('\n').slice(0, 140);
+        return String(json?.content || '').slice(0, 140);
+      })();
+      log('Perplexity response summary', { hasChoices: Array.isArray(json?.choices), model: json?.model, contentType: typeof (msg?.content), preview });
+    } catch {}
+    const { contentText, citations, search_results, model } = extractContent(json);
 
-  if (!resp.ok) {
-    const errMsg = json?.error?.message || json?.error || rawText;
-    err('Erro Perplexity', { status: resp.status, message: errMsg });
-    throw new Error(`Erro Perplexity ${resp.status}: ${errMsg}`);
-  }
+    if (!contentText || String(contentText).trim().length === 0) {
+      warn('Conteúdo vazio retornado pela Perplexity (message.content). Aplicando fallback.');
+      return generateBasicInteractions(compoundName);
+    }
 
-  const message = json?.choices?.[0]?.message || {};
-  // Extrair texto dos blocos de conteúdo (array) conforme Quickstart
-  let contentText = '';
-  const msgContent = message?.content;
-  if (Array.isArray(msgContent)) {
-    contentText = msgContent
-      .map(block => typeof block === 'string' ? block : (block?.text || ''))
-      .filter(Boolean)
-      .join('\n')
-      .trim();
-  } else if (typeof msgContent === 'string') {
-    contentText = msgContent;
-  } else if (Array.isArray(json?.content)) {
-    contentText = json.content.map(c => c?.text || '').join('\n').trim();
-  } else if (typeof json?.content === 'string') {
-    contentText = json.content;
-  }
+    const normalizedContent = normalizeSeverityColumn(contentText);
+    const previewSnippet = String(normalizedContent).slice(0, 300);
+    log('Interações (snippet)', previewSnippet);
 
-  const citations = json?.citations || message?.citations || [];
-  const search_results = json?.search_results || message?.search_results || [];
-
-  if (!contentText || String(contentText).trim().length === 0) {
-    warn('Conteúdo vazio retornado pela Perplexity (message.content). Aplicando fallback.');
+    return {
+      content: normalizedContent,
+      citations,
+      search_results,
+      related_questions: json?.related_questions || [],
+      usage: json?.usage || {},
+      model: model || baseConfig.model,
+      timestamp: new Date().toISOString(),
+      compound_name: compoundName
+    };
+  } catch (eFinal) {
+    err('generateDrugInteractionsServer:error', eFinal?.message);
     return generateBasicInteractions(compoundName);
   }
-
-  const normalizedContent = normalizeSeverityColumn(contentText);
-  const previewSnippet = String(normalizedContent).slice(0, 300);
-  log('Interações (snippet)', previewSnippet);
-
-  return {
-    content: normalizedContent,
-    citations,
-    search_results,
-    related_questions: json?.related_questions || [],
-    usage: json?.usage || {},
-    model: json?.model || searchConfig.model,
-    timestamp: new Date().toISOString(),
-    compound_name: compoundName
-  };
 }
 
 export async function generateInteractionsViaClaude(compoundName, compound, adverseEvents) {

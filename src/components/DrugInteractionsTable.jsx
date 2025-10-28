@@ -22,7 +22,8 @@ export default function DrugInteractionsTable({ interactionsData, compoundName, 
     borderCollapse: 'collapse',
     background: '#fff',
     border: '1px solid #e9ecef',
-    borderRadius: 6
+    borderRadius: 6,
+    minWidth: 720
   };
 
   const thStyle = {
@@ -38,7 +39,16 @@ export default function DrugInteractionsTable({ interactionsData, compoundName, 
     padding: '10px 12px',
     borderBottom: '1px solid #e9ecef',
     fontSize: 14,
-    verticalAlign: 'top'
+    verticalAlign: 'top',
+    wordBreak: 'break-word',
+    overflowWrap: 'anywhere'
+  };
+
+  const scrollContainerStyle = {
+    overflowX: 'auto',
+    WebkitOverflowScrolling: 'touch',
+    maxWidth: '100%',
+    paddingBottom: 4
   };
 
   const badgeBase = {
@@ -146,10 +156,35 @@ export default function DrugInteractionsTable({ interactionsData, compoundName, 
         </span>
       </div>
       {!hasContent ? (
-        <div style={{ fontStyle: 'italic', color: '#6c757d' }}>Sem conteúdo retornado. Exibindo placeholder.</div>
+        <div>
+          <div style={scrollContainerStyle}>
+            <table style={tableStyle}>
+              <thead>
+                <tr>
+                  <th style={thStyle}>Medicamento</th>
+                  <th style={thStyle}>Nível</th>
+                  <th style={thStyle}>Descrição</th>
+                  <th style={thStyle}>Mecanismo</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td style={tdStyle}>—</td>
+                  <td style={tdStyle}><span style={{ ...badgeBase, background: '#6c757d' }}>N/A</span></td>
+                  <td style={tdStyle}>Sem dados disponíveis no momento. Tente novamente.</td>
+                  <td style={tdStyle}>—</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div style={{ fontStyle: 'italic', color: '#6c757d', marginTop: 8 }}>
+            Placeholder exibido por falha de conteúdo ou rede
+          </div>
+        </div>
       ) : (
         <div>
-          <ReactMarkdown
+          <div style={scrollContainerStyle}>
+            <ReactMarkdown
             remarkPlugins={[remarkGfm]}
             components={{
               table: ({ children }) => <table style={tableStyle}>{children}</table>,
@@ -169,7 +204,8 @@ export default function DrugInteractionsTable({ interactionsData, compoundName, 
             }}
           >
             {String(content)}
-          </ReactMarkdown>
+            </ReactMarkdown>
+          </div>
         </div>
       )}
 

@@ -61,11 +61,21 @@ export const fetchInteractionsViaAgent = async (compoundName, options = {}) => {
     if (import.meta.env.DEV || isLocalHost) {
       url = 'http://localhost:5050/api/agent/interactions';
     } else if (RESOLVED_AGENT_URL) {
-      url = RESOLVED_AGENT_URL.replace('/search', '/interactions');
+      const base = String(RESOLVED_AGENT_URL).trim();
+      url = base.endsWith('/search')
+        ? base.replace('/search', '/interactions')
+        : `${base.replace(/\/$/, '')}/interactions`;
     } else {
       // último fallback direto para Render
-      url = PROD_FALLBACK_AGENT_URL.replace('/search', '/interactions');
+      const base = String(PROD_FALLBACK_AGENT_URL).trim();
+      url = base.endsWith('/search')
+        ? base.replace('/search', '/interactions')
+        : `${base.replace(/\/$/, '')}/interactions`;
     }
+  }
+
+  if (typeof console !== 'undefined') {
+    console.log('🔗 Interactions endpoint resolvido:', url);
   }
 
   if (!url) {
@@ -88,8 +98,8 @@ export const fetchInteractionsViaAgent = async (compoundName, options = {}) => {
     ...options,
   };
 
-  const timeoutMs = typeof options.timeoutMs === 'number' ? options.timeoutMs : 12000;
-  const retryDelayMs = typeof options.retryDelayMs === 'number' ? options.retryDelayMs : 800;
+  const timeoutMs = typeof options.timeoutMs === 'number' ? options.timeoutMs : 20000;
+  const retryDelayMs = typeof options.retryDelayMs === 'number' ? options.retryDelayMs : 1000;
   const enableRetry = options.retry !== false; // default true
 
   const attempt = async () => {

@@ -3,7 +3,103 @@ import { getAdverseReactions } from './fdaService.js';
 
 // Base URLs para as APIs do PubChem
 const PUBCHEM_BASE_URL = 'https://pubchem.ncbi.nlm.nih.gov/rest/pug';
-const AUTOCOMPLETE_BASE_URL = 'https://pubchem.ncbi.nlm.nih.gov/rest/autocomplete/compound';
+const AUTOCOMPLETE_BASE_URL = 'https://pubchem.ncbi.nlm.nih.gov/rest/autocomplete';
+
+// Detectar padrão de número CAS (ex.: 2305040-16-6)
+export const isCasNumber = (query) => {
+  if (!query) return false;
+  const clean = String(query).trim();
+  const casPattern = /^\d{2,7}-\d{2}-\d$/;
+  return casPattern.test(clean);
+};
+
+// Utilitário: JSONP para endpoints de autocomplete do PubChem (compound/substance)
+const jsonpAutocomplete = (type, query, timeoutMs = 5000) => {
+  return new Promise((resolve) => {
+    const cleanQuery = query.trim().replace(/[^a-zA-Z0-9\s\-]/g, '');
+    if (!cleanQuery) return resolve([]);
+
+    const callbackName = `pubchem_cb_${type}_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+    let script;
+
+    // Criar callback global
+    window[callbackName] = (data) => {
+      try {
+        const dict = data?.dictionary_terms || {};
+        const list = dict[type] || dict.compound || dict.substance || [];
+        const suggestions = Array.isArray(list) ? list : [];
+        const filtered = suggestions.filter(s => s && typeof s === 'string').slice(0, 15);
+        resolve(filtered);
+      } catch (e) {
+        console.warn(`Falha ao processar JSONP ${type}:`, e);
+        resolve([]);
+      } finally {
+        if (window[callbackName]) delete window[callbackName];
+        if (script && script.parentNode) document.head.removeChild(script);
+      }
+    };
+
+    script = document.createElement('script');
+    script.src = `${AUTOCOMPLETE_BASE_URL}/${encodeURIComponent(type)}/${encodeURIComponent(cleanQuery)}/jsonp?callback=${callbackName}`;
+    script.onerror = () => {
+      if (window[callbackName]) delete window[callbackName];
+      if (script && script.parentNode) document.head.removeChild(script);
+      resolve([]);
+    };
+
+    const tId = setTimeout(() => {
+      if (window[callbackName]) delete window[callbackName];
+      if (script && script.parentNode) document.head.removeChild(script);
+      resolve([]);
+    }, timeoutMs);
+
+    // Garantir limpeza do timeout ao finalizar
+    const originalCallback = window[callbackName];
+    window[callbackName] = (...args) => {
+      clearTimeout(tId);
+      originalCallback(...args);
+    };
+
+    document.head.appendChild(script);
+  });
+};
+
+// Utilitário: obter CIDs por número CAS
+const getCidsByCAS = async (cas) => {
+  try {
+    const url = `${PUBCHEM_BASE_URL}/compound/xref/RN/${encodeURIComponent(cas)}/cids/JSON`;
+    const response = await axios.get(url);
+    const cids = response.data?.IdentifierList?.CID || [];
+    return Array.isArray(cids) ? cids : [];
+  } catch (e) {
+    return [];
+  }
+};
+
+// Utilitário: obter SIDs por número CAS
+const getSidsByCAS = async (cas) => {
+  try {
+    const url = `${PUBCHEM_BASE_URL}/substance/xref/RN/${encodeURIComponent(cas)}/sids/JSON`;
+    const response = await axios.get(url);
+    const sids = response.data?.IdentifierList?.SID || [];
+    return Array.isArray(sids) ? sids : [];
+  } catch (e) {
+    return [];
+  }
+};
+
+// Utilitário: deduplicação simples mantendo ordem
+const uniqueStrings = (arr) => {
+  const seen = new Set();
+  const out = [];
+  for (const s of arr) {
+    if (typeof s === 'string' && !seen.has(s)) {
+      seen.add(s);
+      out.push(s);
+    }
+  }
+  return out;
+};
 
 /**
  * Função para buscar sugestões de autocompletar
@@ -12,72 +108,48 @@ const AUTOCOMPLETE_BASE_URL = 'https://pubchem.ncbi.nlm.nih.gov/rest/autocomplet
  */
 export const getAutocompleteSuggestions = async (query) => {
   try {
-    if (!query || query.length < 2) {
-      return [];
-    }
+    if (!query || query.length < 2) return [];
+    const cleanQuery = query.trim();
 
-    // Limpar query para evitar caracteres problemáticos
-    const cleanQuery = query.trim().replace(/[^a-zA-Z0-9\s\-]/g, '');
-    if (!cleanQuery) {
-      return [];
-    }
+    // Caso 1: usuário digitou um número CAS -> usar xref para obter nomes
+    if (isCasNumber(cleanQuery)) {
+      const cas = cleanQuery;
+      const suggestions = [cas];
 
-    // Usar JSONP para contornar CORS da API do PubChem
-    return new Promise((resolve, reject) => {
-      const callbackName = `pubchem_callback_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      let script;
-      
-      // Criar função de callback global
-      window[callbackName] = (data) => {
+      // Priorizar CIDs (compostos) e coletar sinônimos
+      const cids = await getCidsByCAS(cas);
+      if (cids.length > 0) {
         try {
-          const suggestions = data.dictionary_terms?.compound || [];
-          // Filtrar e limitar sugestões
-          const filteredSuggestions = suggestions
-            .filter(suggestion => suggestion && typeof suggestion === 'string')
-            .slice(0, 10);
-          resolve(filteredSuggestions);
-        } catch (error) {
-          console.error('Erro ao processar sugestões:', error);
-          resolve([]);
-        } finally {
-          // Limpar callback e script
-          if (window[callbackName]) {
-            delete window[callbackName];
-          }
-          if (script && script.parentNode) {
-            document.head.removeChild(script);
-          }
+          const synonyms = await getCompoundSynonyms(cids[0]);
+          const names = synonyms.filter(s => typeof s === 'string' && !isCasNumber(s));
+          return uniqueStrings([...suggestions, ...names]).slice(0, 15);
+        } catch {
+          // continua para SIDs
         }
-      };
+      }
 
-      // Criar script tag para JSONP
-      script = document.createElement('script');
-      script.src = `${AUTOCOMPLETE_BASE_URL}/${encodeURIComponent(cleanQuery)}/jsonp?callback=${callbackName}`;
-      script.onerror = () => {
-        console.warn('Erro ao carregar sugestões do PubChem');
-        if (window[callbackName]) {
-          delete window[callbackName];
-        }
-        if (script && script.parentNode) {
-          document.head.removeChild(script);
-        }
-        resolve([]); // Retornar array vazio em vez de rejeitar
-      };
-      
-      // Timeout para evitar travamento
-      setTimeout(() => {
-        if (window[callbackName]) {
-          console.warn('Timeout ao buscar sugestões');
-          delete window[callbackName];
-          if (script && script.parentNode) {
-            document.head.removeChild(script);
-          }
-          resolve([]);
-        }
-      }, 5000); // Reduzir timeout para 5 segundos
+      // Fallback: buscar SIDs (substâncias) e tentar nomes
+      const sids = await getSidsByCAS(cas);
+      if (sids.length > 0) {
+        try {
+          const syns = await getSubstanceSynonyms(sids[0]);
+          const names = syns.filter(s => typeof s === 'string' && !isCasNumber(s));
+          return uniqueStrings([...suggestions, ...names]).slice(0, 15);
+        } catch {}
+      }
 
-      document.head.appendChild(script);
-    });
+      // Sem CIDs/SIDs, devolver apenas o CAS
+      return suggestions;
+    }
+
+    // Caso 2: nome comum -> combinar autocomplete de compound e substance
+    const [compoundSuggestions, substanceSuggestions] = await Promise.all([
+      jsonpAutocomplete('compound', cleanQuery),
+      jsonpAutocomplete('substance', cleanQuery)
+    ]);
+
+    const combined = uniqueStrings([...compoundSuggestions, ...substanceSuggestions]);
+    return combined.slice(0, 15);
   } catch (error) {
     console.error('Erro ao buscar sugestões de autocompletar:', error);
     return [];
@@ -91,14 +163,19 @@ export const getAutocompleteSuggestions = async (query) => {
  */
 export const getCompoundCID = async (compoundName) => {
   try {
+    // Se for um número CAS, usar xref RN (mais confiável)
+    if (isCasNumber(compoundName)) {
+      const cids = await getCidsByCAS(compoundName);
+      if (cids.length > 0) return cids[0];
+      return null;
+    }
+
     const response = await axios.get(
       `${PUBCHEM_BASE_URL}/compound/name/${encodeURIComponent(compoundName)}/cids/JSON`
     );
-    
     if (response.data?.IdentifierList?.CID?.length > 0) {
       return response.data.IdentifierList.CID[0];
     }
-    
     return null;
   } catch (error) {
     console.error('Erro ao buscar CID:', error);
@@ -179,6 +256,38 @@ export const getCompoundImageURL = (cid) => {
   return `${PUBCHEM_BASE_URL}/compound/cid/${cid}/PNG?record_type=2d&image_size=large`;
 };
 
+// ===== Fallback para SUBSTANCE (SID) =====
+
+export const getSubstanceSID = async (name) => {
+  try {
+    const response = await axios.get(
+      `${PUBCHEM_BASE_URL}/substance/name/${encodeURIComponent(name)}/sids/JSON`
+    );
+    const sids = response.data?.IdentifierList?.SID || [];
+    return Array.isArray(sids) && sids.length > 0 ? sids[0] : null;
+  } catch (error) {
+    console.error('Erro ao buscar SID por nome:', error);
+    return null;
+  }
+};
+
+export const getSubstanceSynonyms = async (sid) => {
+  try {
+    const response = await axios.get(
+      `${PUBCHEM_BASE_URL}/substance/sid/${sid}/synonyms/JSON`
+    );
+    const info = response.data?.InformationList?.Information?.[0];
+    return info?.Synonym || [];
+  } catch (error) {
+    console.error('Erro ao buscar sinônimos da substância:', error);
+    return [];
+  }
+};
+
+export const getSubstanceImageURL = (sid) => {
+  return `${PUBCHEM_BASE_URL}/substance/sid/${sid}/PNG?image_size=large`;
+};
+
 /**
  * Função para buscar bioassays relacionados ao composto (Drug-Drug Interactions)
  * @param {number} cid - CID do composto
@@ -242,7 +351,35 @@ export const getCompoundData = async (compoundName) => {
     // 1. Buscar CID
     const cid = await getCompoundCID(compoundName);
     if (!cid) {
-      throw new Error('Composto não encontrado');
+      // Fallback: tentar como SUBSTANCE (ex.: biológicos como Delandistrogene moxeparvovec)
+      const sid = await getSubstanceSID(compoundName);
+      if (!sid) {
+        throw new Error('Composto/Substância não encontrado');
+      }
+
+      const synonyms = await getSubstanceSynonyms(sid);
+      const casPattern = /^\d{2,7}-\d{2}-\d$/;
+      const casNumber = synonyms.find(s => casPattern.test(s)) || null;
+      const imageURL = getSubstanceImageURL(sid);
+
+      console.log('🔍 PubChem Service - Buscando reações adversas para (substância):', compoundName);
+      const adverseReactions = await getAdverseReactions(compoundName, { maxResults: 500, synonyms: Array.isArray(synonyms) ? synonyms.slice(0, 50) : [] });
+      console.log('📊 PubChem Service - Reações adversas recebidas:', adverseReactions);
+
+      return {
+        sid,
+        cid: null,
+        name: compoundName,
+        iupacName: 'Não disponível',
+        molecularFormula: 'Não disponível',
+        molecularWeight: 'Não disponível',
+        casNumber: casNumber || 'Não disponível',
+        synonyms: Array.isArray(synonyms) ? synonyms.slice(0, 20) : [],
+        smiles: 'Não disponível',
+        imageURL,
+        adverseReactions,
+        searchTerm: compoundName
+      };
     }
 
     // 2. Buscar propriedades básicas
@@ -262,7 +399,7 @@ export const getCompoundData = async (compoundName) => {
 
     // 6. Buscar reações adversas no FDA
     console.log('🔍 PubChem Service - Buscando reações adversas para:', compoundName);
-    const adverseReactions = await getAdverseReactions(compoundName);
+    const adverseReactions = await getAdverseReactions(compoundName, { maxResults: 500, synonyms: Array.isArray(synonyms) ? synonyms.slice(0, 50) : [] });
     console.log('📊 PubChem Service - Reações adversas recebidas:', adverseReactions);
 
     return {

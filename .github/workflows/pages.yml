@@ -43,23 +43,6 @@ jobs:
           fi
           echo "VITE_AGENT_URL=$URL" >> $GITHUB_ENV
 
-      - name: Resolve VITE_AGENT_INTERACTIONS_URL
-        run: |
-          INT_URL="$VITE_AGENT_URL"
-          if [ -z "$INT_URL" ]; then
-            INT_URL="${{ secrets.VITE_AGENT_INTERACTIONS_URL }}"
-          fi
-          if [ -z "$INT_URL" ]; then
-            INT_URL="${{ vars.VITE_AGENT_INTERACTIONS_URL }}"
-          fi
-          if echo "$INT_URL" | grep -q "/search$"; then
-            INT_URL="${INT_URL%/search}/interactions"
-          else
-            # garantir sufixo /interactions se não vier com /search
-            INT_URL="${INT_URL%/}/interactions"
-          fi
-          echo "VITE_AGENT_INTERACTIONS_URL=$INT_URL" >> $GITHUB_ENV
-
       - name: Build
         run: npm run build
 

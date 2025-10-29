@@ -56,41 +56,14 @@ export const fetchInteractionsViaAgent = async (compoundName, options = {}) => {
     throw new Error('Nome de composto inválido');
   }
 
-  let url = import.meta.env.VITE_AGENT_INTERACTIONS_URL && String(import.meta.env.VITE_AGENT_INTERACTIONS_URL).trim();
-  if (!url) {
-    if (import.meta.env.DEV || isLocalHost) {
-      url = 'http://localhost:5050/api/agent/interactions';
-    } else if (RESOLVED_AGENT_URL) {
-      const base = String(RESOLVED_AGENT_URL).trim();
-      url = base.endsWith('/search')
-        ? base.replace('/search', '/interactions')
-        : `${base.replace(/\/$/, '')}/interactions`;
-    } else {
-      // último fallback direto para Render
-      const base = String(PROD_FALLBACK_AGENT_URL).trim();
-      url = base.endsWith('/search')
-        ? base.replace('/search', '/interactions')
-        : `${base.replace(/\/$/, '')}/interactions`;
-    }
-  }
-
-  if (typeof console !== 'undefined') {
-    console.log('🔗 Interactions endpoint resolvido:', url);
-  }
-
-  if (!url) {
-    if (typeof console !== 'undefined') {
-      console.warn('⚠️ Agente de interações indisponível: defina VITE_AGENT_INTERACTIONS_URL.');
-    }
-    return {
-      content: '',
-      citations: [],
-      search_results: [],
-      model: 'fallback',
-      timestamp: new Date().toISOString(),
-      compound_name: compoundName,
-      note: 'Agente de interações indisponível no ambiente de produção (sem backend).'
-    };
+  let url;
+  if (import.meta.env.DEV || isLocalHost) {
+    url = 'http://localhost:5050/api/agent/interactions';
+  } else {
+    const base = (RESOLVED_AGENT_URL || PROD_FALLBACK_AGENT_URL).trim();
+    url = base.endsWith('/search')
+      ? base.replace('/search', '/interactions')
+      : `${base.replace(/\/$/, '')}/interactions`;
   }
 
   const payloadOptions = {
@@ -98,60 +71,14 @@ export const fetchInteractionsViaAgent = async (compoundName, options = {}) => {
     ...options,
   };
 
-  const timeoutMs = typeof options.timeoutMs === 'number' ? options.timeoutMs : 20000;
-  const retryDelayMs = typeof options.retryDelayMs === 'number' ? options.retryDelayMs : 1000;
-  const enableRetry = options.retry !== false; // default true
-
-  const attempt = async () => {
-    const controller = new AbortController();
-    const to = setTimeout(() => controller.abort('timeout'), timeoutMs);
-    try {
-      const resp = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ compoundName, ...payloadOptions }),
-        signal: controller.signal
-      });
-      const data = await resp.json().catch(() => ({ success: false, error: 'Resposta inválida do servidor' }));
-      if (!resp.ok || data.success === false) {
-        throw new Error(data.error || `Falha no agente (HTTP ${resp.status})`);
-      }
-      return data.interactions ? data.interactions : data;
-    } finally {
-      clearTimeout(to);
-    }
-  };
-
-  try {
-    return await attempt();
-  } catch (err) {
-    const msg = String(err?.message || '');
-    const isTransient = /timeout|network|fetch|ECONNRESET|ENOTFOUND|502|503|504|429/i.test(msg);
-    if (typeof console !== 'undefined') {
-      console.warn('⚠️ Falha ao buscar interações:', msg);
-    }
-    if (!enableRetry || !isTransient) {
-      throw err;
-    }
-    await new Promise((r) => setTimeout(r, retryDelayMs));
-    try {
-      if (typeof console !== 'undefined') {
-        console.warn('🔄 Retentativa de busca de interações...');
-      }
-      return await attempt();
-    } catch (err2) {
-      if (typeof console !== 'undefined') {
-        console.warn('🛟 Aplicando fallback após erro de rede/transiente:', String(err2?.message || err2));
-      }
-      return {
-        content: '',
-        citations: [],
-        search_results: [],
-        model: 'fallback',
-        timestamp: new Date().toISOString(),
-        compound_name: compoundName,
-        note: 'Fallback após falha de rede/transiente no agente de interações'
-      };
-    }
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ compoundName, ...payloadOptions })
+  });
+  const data = await resp.json().catch(() => ({ success: false, error: 'Resposta inválida do servidor' }));
+  if (!resp.ok || data.success === false) {
+    throw new Error(data.error || `Falha no agente (HTTP ${resp.status})`);
   }
+  return data.interactions ? data.interactions : data;
 };

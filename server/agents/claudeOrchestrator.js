@@ -16,6 +16,31 @@ const PPLX_API_KEY = process.env.PERPLEXITY_API_KEY || '';
 const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY || '';
 log('Env status', { anthropicKey: ANTHROPIC_KEY ? 'present' : 'missing', perplexityKey: PPLX_API_KEY ? 'present' : 'missing' });
 
+// Cache simples em memória para estabilizar respostas e reduzir rate limit
+// TTL padrão: 6 horas
+const INTERACTIONS_CACHE = new Map(); // key -> { data, expiresAt }
+const IN_FLIGHT = new Map(); // key -> Promise
+
+function getCacheKey(name) {
+  return `interactions:${String(name || '').trim().toLowerCase()}`;
+}
+
+function getCachedInteractions(name) {
+  const key = getCacheKey(name);
+  const entry = INTERACTIONS_CACHE.get(key);
+  if (!entry) return null;
+  if (Date.now() > entry.expiresAt) {
+    INTERACTIONS_CACHE.delete(key);
+    return null;
+  }
+  return entry.data;
+}
+
+function setCachedInteractions(name, data, ttlMs = 6 * 60 * 60 * 1000) {
+  const key = getCacheKey(name);
+  INTERACTIONS_CACHE.set(key, { data, expiresAt: Date.now() + ttlMs });
+}
+
 function mapSeverityToPt(value) {
   const v = String(value || '').toLowerCase();
   if (/^severe/.test(v)) return 'Grave';
@@ -84,6 +109,15 @@ async function generateDrugInteractionsServer(compoundName, options = {}) {
   if (!PPLX_API_KEY) {
     warn('PERPLEXITY_API_KEY não configurada; usando conteúdo básico.');
     return generateBasicInteractions(compoundName);
+  }
+
+  // Cache hit rápido (respostas válidas anteriores)
+  if (!options.forceRefresh) {
+    const cached = getCachedInteractions(compoundName);
+    if (cached && cached?.content && String(cached.content).trim().length > 0) {
+      log('generateDrugInteractionsServer:cache_hit', { compoundName, model: cached.model, len: cached.content.length });
+      return { ...cached, timestamp: new Date().toISOString(), compound_name: compoundName };
+    }
   }
 
   const baseConfig = {
@@ -209,7 +243,18 @@ async function generateDrugInteractionsServer(compoundName, options = {}) {
   };
 
   try {
-    const json = await trySequence();
+    // Deduplicação de chamadas simultâneas para o mesmo composto
+    const key = getCacheKey(compoundName);
+    if (!IN_FLIGHT.has(key)) {
+      IN_FLIGHT.set(key, (async () => {
+        const json = await trySequence();
+        return json;
+      })().finally(() => {
+        // limpar após concluir para evitar acumular Promises encerradas
+        setTimeout(() => IN_FLIGHT.delete(key), 0);
+      }));
+    }
+    const json = await IN_FLIGHT.get(key);
     try {
       const msg = json?.choices?.[0]?.message;
       const preview = (() => {
@@ -231,7 +276,7 @@ async function generateDrugInteractionsServer(compoundName, options = {}) {
     const previewSnippet = String(normalizedContent).slice(0, 300);
     log('Interações (snippet)', previewSnippet);
 
-    return {
+    const result = {
       content: normalizedContent,
       citations,
       search_results,
@@ -241,6 +286,9 @@ async function generateDrugInteractionsServer(compoundName, options = {}) {
       timestamp: new Date().toISOString(),
       compound_name: compoundName
     };
+    // Armazenar somente respostas válidas (não armazenar fallback)
+    try { setCachedInteractions(compoundName, result); } catch {}
+    return result;
   } catch (eFinal) {
     err('generateDrugInteractionsServer:error', eFinal?.message);
     return generateBasicInteractions(compoundName);

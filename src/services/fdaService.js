@@ -85,7 +85,13 @@ const DRUG_SYNONYMS = {
   
   // Amoxicilina
   'amoxicilina': ['amoxicillin', 'amoxil', 'trimox'],
-  'amoxicillin': ['amoxicilina', 'amoxil', 'trimox']
+  'amoxicillin': ['amoxicilina', 'amoxil', 'trimox'],
+  // Semaglutide e marcas comerciais
+  'semaglutide': ['ozempic', 'wegovy', 'rybelsus', 'semaglutida'],
+  'semaglutida': ['semaglutide', 'ozempic', 'wegovy', 'rybelsus'],
+  'ozempic': ['semaglutide', 'semaglutida', 'wegovy', 'rybelsus'],
+  'wegovy': ['semaglutide', 'semaglutida', 'ozempic', 'rybelsus'],
+  'rybelsus': ['semaglutide', 'semaglutida', 'ozempic', 'wegovy']
 };
 
 /**
@@ -114,32 +120,61 @@ const normalizeDrugName = (drugName) => {
  * @param {string} drugName - Nome do medicamento original
  * @returns {Array<string>} - Array com o nome original e todos os sinônimos
  */
-const expandDrugSynonyms = (drugName) => {
+// Detecta padrão de número CAS (ex.: 2305040-16-6)
+const isCasLike = (text) => {
+  if (!text || typeof text !== 'string') return false;
+  const clean = text.trim();
+  const casPattern = /^\d{2,7}-\d{2}-\d$/;
+  return casPattern.test(clean);
+};
+
+const expandDrugSynonyms = (drugName, externalSynonyms = []) => {
   const normalizedName = normalizeDrugName(drugName);
   const synonyms = new Set([normalizedName]);
-  
-  // Adiciona sinônimos diretos
+
+  // Adiciona sinônimos diretos do mapa interno
   if (DRUG_SYNONYMS[normalizedName]) {
     DRUG_SYNONYMS[normalizedName].forEach(synonym => {
-      synonyms.add(normalizeDrugName(synonym));
+      const n = normalizeDrugName(synonym);
+      if (n && n.length > 1) synonyms.add(n);
     });
   }
-  
+
   // Busca por sinônimos reversos (quando o nome está na lista de sinônimos de outro)
   Object.entries(DRUG_SYNONYMS).forEach(([key, synonymList]) => {
     if (synonymList.some(synonym => normalizeDrugName(synonym) === normalizedName)) {
       synonyms.add(key);
       synonymList.forEach(synonym => {
-        synonyms.add(normalizeDrugName(synonym));
+        const n = normalizeDrugName(synonym);
+        if (n && n.length > 1) synonyms.add(n);
       });
     }
   });
-  
-  // Adiciona variações comuns
+
+  // Adiciona variações comuns do nome base
   const variations = generateNameVariations(normalizedName);
-  variations.forEach(variation => synonyms.add(variation));
-  
-  return Array.from(synonyms).filter(name => name.length > 1);
+  variations.forEach(variation => {
+    if (variation && variation.length > 1) synonyms.add(variation);
+  });
+
+  // Integra sinônimos externos (ex.: retornados pelo PubChem), filtrando números CAS
+  if (Array.isArray(externalSynonyms)) {
+    externalSynonyms.forEach(syn => {
+      const normalized = normalizeDrugName(String(syn));
+      // Ignora entradas vazias, muito curtas, sem letras ou que pareçam CAS
+      const hasLetters = /[a-z]/.test(normalized);
+      if (normalized && normalized.length > 1 && hasLetters && !isCasLike(normalized)) {
+        synonyms.add(normalized);
+        // Adiciona variações também para sinônimos externos
+        generateNameVariations(normalized).forEach(v => {
+          if (v && v.length > 1) synonyms.add(v);
+        });
+      }
+    });
+  }
+
+  // Saída final deduplicada
+  return Array.from(synonyms).filter(name => name.length > 1).slice(0, 100);
 };
 
 /**
@@ -190,8 +225,8 @@ const generateNameVariations = (drugName) => {
  * @param {string} drugName - Nome do medicamento original
  * @returns {string} - Query expandida para a API FDA
  */
-const createExpandedSearchQuery = (drugName) => {
-  const synonyms = expandDrugSynonyms(drugName);
+const createExpandedSearchQuery = (drugName, externalSynonyms = []) => {
+  const synonyms = expandDrugSynonyms(drugName, externalSynonyms);
   
   console.log(`🔍 Expandindo busca para "${drugName}":`, synonyms);
   
@@ -280,10 +315,18 @@ const createExpandedSearchQuery = (drugName) => {
  * @param {number} maxResults - Número máximo de resultados desejados (padrão: 500)
  * @returns {Promise<Object>} - Dados das reações adversas com cobertura ampliada
  */
-export const getAdverseReactions = async (drugName, maxResults = 500) => {
+// Suporta estilo antigo (segundo parâmetro number) e novo com options
+// Novo: getAdverseReactions(drugName, { maxResults, synonyms })
+export const getAdverseReactions = async (drugName, options = 500) => {
   try {
+    const isNumber = typeof options === 'number';
+    const isArray = Array.isArray(options);
+    const isObject = typeof options === 'object' && options !== null && !isArray;
+    const maxResults = isNumber ? options : (isObject && typeof options.maxResults === 'number' ? options.maxResults : 500);
+    const externalSynonyms = isArray ? options : (isObject && Array.isArray(options.synonyms) ? options.synonyms : []);
+
     console.log('🔍 FDA Service - Busca ampliada iniciada para:', drugName, 'timestamp:', new Date().toISOString());
-    
+
     if (!isValidDrugName(drugName)) {
       return {
         success: false,
@@ -296,8 +339,8 @@ export const getAdverseReactions = async (drugName, maxResults = 500) => {
       };
     }
 
-    // Executar múltiplas estratégias de busca para ampliar cobertura
-    const allResults = await executeMultipleSearchStrategies(drugName, maxResults);
+    // Executar múltiplas estratégias de busca para ampliar cobertura, usando sinônimos externos quando fornecidos
+    const allResults = await executeMultipleSearchStrategies(drugName, maxResults, externalSynonyms);
     
     if (allResults.length === 0) {
       return {
@@ -313,7 +356,7 @@ export const getAdverseReactions = async (drugName, maxResults = 500) => {
     }
     
     // Filtrar eventos que realmente contêm a substância pesquisada
-    const filteredResults = filterEventsByGenericName(allResults, drugName);
+    const filteredResults = filterEventsByGenericName(allResults, drugName, externalSynonyms);
     console.log(`✅ Filtrados ${filteredResults.length} de ${allResults.length} eventos que contêm "${drugName}"`);
     
     if (filteredResults.length === 0) {
@@ -365,15 +408,15 @@ export const getAdverseReactions = async (drugName, maxResults = 500) => {
  * @param {number} maxResults - Número máximo de resultados desejados
  * @returns {Promise<Array>} - Array combinado de todos os eventos encontrados
  */
-const executeMultipleSearchStrategies = async (drugName, maxResults) => {
+const executeMultipleSearchStrategies = async (drugName, maxResults, externalSynonyms = []) => {
   const allEvents = new Map(); // Usar Map para evitar duplicatas por safetyreportid
-  const synonyms = expandDrugSynonyms(drugName);
+  const synonyms = expandDrugSynonyms(drugName, externalSynonyms);
   
   console.log(`🔍 Executando múltiplas estratégias de busca para "${drugName}" com ${synonyms.length} sinônimos`);
   
   // Estratégia 1: Busca expandida com todos os sinônimos (principal)
   try {
-    const expandedResults = await searchWithExpandedQuery(drugName, Math.min(maxResults, 1000));
+    const expandedResults = await searchWithExpandedQuery(drugName, Math.min(maxResults, 1000), synonyms);
     expandedResults.forEach(event => {
       if (event.safetyreportid) {
         allEvents.set(event.safetyreportid, event);
@@ -404,7 +447,7 @@ const executeMultipleSearchStrategies = async (drugName, maxResults) => {
   
   // Estratégia 3: Busca por campos específicos (medicinalproduct, activesubstancename)
   try {
-    const specificFieldResults = await searchBySpecificFields(drugName, 300);
+    const specificFieldResults = await searchBySpecificFields(drugName, 300, synonyms);
     specificFieldResults.forEach(event => {
       if (event.safetyreportid && !allEvents.has(event.safetyreportid)) {
         allEvents.set(event.safetyreportid, event);
@@ -424,8 +467,8 @@ const executeMultipleSearchStrategies = async (drugName, maxResults) => {
 /**
  * Busca com query expandida incluindo todos os sinônimos
  */
-const searchWithExpandedQuery = async (drugName, limit) => {
-  const expandedQuery = createExpandedSearchQuery(drugName);
+const searchWithExpandedQuery = async (drugName, limit, externalSynonyms = []) => {
+  const expandedQuery = createExpandedSearchQuery(drugName, externalSynonyms);
   return await performPaginatedSearch(expandedQuery, limit);
 };
 
@@ -440,8 +483,8 @@ const searchBySingleTerm = async (term, limit) => {
 /**
  * Busca por campos específicos do FAERS
  */
-const searchBySpecificFields = async (drugName, limit) => {
-  const synonyms = expandDrugSynonyms(drugName);
+const searchBySpecificFields = async (drugName, limit, externalSynonyms = []) => {
+  const synonyms = expandDrugSynonyms(drugName, externalSynonyms);
   const queries = [];
   
   // Busca específica por medicinalproduct
@@ -768,9 +811,9 @@ const isRelevantResult = (result, drugName) => {
  * @param {string} drugName - Nome da substância pesquisada
  * @returns {Array} - Eventos filtrados com maior cobertura
  */
-const filterEventsByGenericName = (events, drugName) => {
+const filterEventsByGenericName = (events, drugName, externalSynonyms = []) => {
   const normalizedTarget = normalizeDrugName(drugName);
-  const synonyms = expandDrugSynonyms(drugName);
+  const synonyms = expandDrugSynonyms(drugName, externalSynonyms);
   const allVariations = synonyms.concat(synonyms.flatMap(synonym => generateNameVariations(synonym)));
   
   console.log(`🔍 Filtrando ${events.length} eventos com ${allVariations.length} variações:`, allVariations.slice(0, 10));
